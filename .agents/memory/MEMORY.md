@@ -1,5 +1,6 @@
 - [Demo mode auth](demo-mode-auth.md) — auth middleware uses upsert (not find+create) for demo agency to avoid race-condition P2002 errors
 - [ProtectedLayout Clerk hooks](protected-layout-hooks.md) — useAuth must only render in a child component (ClerkGuard), never called conditionally at top level
 - [ReportCraft stack](reportcraft-stack.md) — port layout, demo mode, key env vars, and architectural decisions for this project
+- [Backend workflow recovery](backend-workflow-recovery.md) — backend starts fine but restart_workflow() times out; use configureWorkflow() to reconfigure+restart; root cause is stale "failed" state not cleared by restart tool
 - [PRD audit v3 gaps fixed](prd-audit-v3-gaps.md) — all PRD §15 gaps implemented; key decisions on error codes, encryption key, and new routes
 - [Global upgrade modal pattern](upgrade-modal-pattern.md) — api.ts fires CustomEvent 'show-upgrade-modal'; ProtectedLayout listens and renders UpgradeModal; FEATURE_LOCKED/ACCOUNT_READ_ONLY/REPORT_LIMIT_REACHED all routed through this
