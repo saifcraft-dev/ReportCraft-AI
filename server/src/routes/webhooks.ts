@@ -36,6 +36,23 @@ router.post('/clerk', async (req: Request, res: Response) => {
     if (type === 'user.deleted') {
       const agency = await prisma.agency.findUnique({ where: { clerkUserId: data.id } });
       if (agency) {
+        // Cancel active LS subscription before marking cancelled
+        if (agency.lemonSqueezySubscriptionId && process.env.LEMONSQUEEZY_API_KEY) {
+          try {
+            await fetch(
+              `https://api.lemonsqueezy.com/v1/subscriptions/${agency.lemonSqueezySubscriptionId}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  Authorization: `Bearer ${process.env.LEMONSQUEEZY_API_KEY}`,
+                  Accept: 'application/vnd.api+json',
+                },
+              }
+            );
+          } catch (e) {
+            console.error('Failed to cancel LS subscription on user.deleted:', e);
+          }
+        }
         await prisma.agency.update({
           where: { id: agency.id },
           data: { subscriptionStatus: 'cancelled' },

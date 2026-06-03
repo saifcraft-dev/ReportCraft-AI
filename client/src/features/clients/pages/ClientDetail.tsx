@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { ArrowLeft, FileText, Plus, Settings, Plug, Calendar, Send, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Settings, Plug, Calendar, Send, RefreshCw, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clientsApi, reportsApi } from '../../../lib/api';
 import { formatDate, formatRelative } from '../../../utils/format';
@@ -9,6 +9,97 @@ import StatusBadge from '../../../components/shared/StatusBadge';
 import EmptyState from '../../../components/shared/EmptyState';
 import { PageLoader } from '../../../components/shared/LoadingSpinner';
 import GenerateReportModal from '../../reports/components/GenerateReportModal';
+
+function DeliveryHistory({ clientId }: { clientId: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery(
+    ['deliveries', clientId],
+    () => clientsApi.getDeliveries(clientId, 1),
+    { staleTime: 30000 }
+  );
+
+  const retryMutation = useMutation(
+    (reportId: string) => reportsApi.send(reportId),
+    {
+      onSuccess: () => {
+        toast.success('Report re-sent!');
+        qc.invalidateQueries(['deliveries', clientId]);
+      },
+      onError: () => toast.error('Failed to retry send'),
+    }
+  );
+
+  const deliveries = data?.deliveries || [];
+
+  const statusColor = (s: string) => {
+    if (s === 'sent' || s === 'delivered' || s === 'opened') return 'text-green-400';
+    if (s === 'failed' || s === 'bounced') return 'text-red-400';
+    if (s === 'sending') return 'text-yellow-400';
+    return 'text-[#64748B]';
+  };
+
+  return (
+    <div className="card overflow-hidden mt-6">
+      <div className="px-4 py-3 border-b border-[#334155] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Send size={13} className="text-[#64748B]" />
+          <h3 className="font-semibold text-white text-sm">Report Delivery History</h3>
+        </div>
+        <span className="text-xs text-[#64748B]">{deliveries.length} deliveries</span>
+      </div>
+
+      {isLoading ? (
+        <div className="px-4 py-6 text-center text-xs text-[#64748B]">Loading deliveries...</div>
+      ) : deliveries.length === 0 ? (
+        <div className="px-4 py-6 text-center">
+          <Send size={20} className="text-[#475569] mx-auto mb-2" />
+          <p className="text-xs text-[#64748B]">No deliveries yet. Send a report to get started.</p>
+        </div>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-[#1E293B]">
+              {['Date Sent', 'Status', 'Opened', ''].map(h => (
+                <th key={h} className="text-left px-4 py-2.5 font-medium text-[#64748B]">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {deliveries.map((d: any) => (
+              <tr key={d.id} className="border-b border-[#1E293B] last:border-0">
+                <td className="px-4 py-3 text-[#94A3B8]">{d.sentAt ? formatRelative(d.sentAt) : '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={`font-medium capitalize ${statusColor(d.status)}`}>
+                    {d.status}
+                    {d.failureReason && (
+                      <span className="text-red-400/70 font-normal ml-1" title={d.failureReason}>
+                        <AlertCircle size={11} className="inline" />
+                      </span>
+                    )}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-[#64748B]">
+                  {d.openedAt ? formatRelative(d.openedAt) : '—'}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {(d.status === 'failed' || d.status === 'bounced') && (
+                    <button
+                      onClick={() => retryMutation.mutate(d.reportId)}
+                      disabled={retryMutation.isLoading}
+                      className="flex items-center gap-1 text-[10px] text-[#6366F1] hover:underline disabled:opacity-50"
+                    >
+                      <RefreshCw size={10} /> Retry
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -162,6 +253,9 @@ export default function ClientDetail() {
               </div>
             )}
           </div>
+
+          {/* Delivery history with retry */}
+          <DeliveryHistory clientId={id!} />
         </div>
       </div>
 

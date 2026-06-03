@@ -13,6 +13,7 @@ import connectorsRouter from './routes/connectors';
 import webhooksRouter from './routes/webhooks';
 import teamRouter from './routes/team';
 import referralsRouter from './routes/referrals';
+import billingRouter from './routes/billing';
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use('/api/reports', pdfRouter);
 app.use('/api/connectors', connectorsRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/referrals', referralsRouter);
+app.use('/api/billing', billingRouter);
 
 // Serve React frontend in production
 const distPath = path.join(__dirname, '../../client/dist');

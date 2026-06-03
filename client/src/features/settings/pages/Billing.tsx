@@ -1,7 +1,8 @@
-import { useQuery } from 'react-query';
-import { Check, CreditCard, ExternalLink, Copy, Users, Gift } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { Check, CreditCard, ExternalLink, Copy, Gift, AlertTriangle, Archive } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { agencyApi, referralsApi } from '../../../lib/api';
+import { agencyApi, referralsApi, billingApi, clientsApi } from '../../../lib/api';
 import { formatDate } from '../../../utils/format';
 import StatusBadge from '../../../components/shared/StatusBadge';
 import { PageLoader } from '../../../components/shared/LoadingSpinner';
@@ -13,10 +14,141 @@ const PLANS = [
 ];
 
 const LS_CHECKOUT_URLS: Record<string, string> = {
-  STARTER: import.meta.env.PROD ? 'https://reportcraftai.lemonsqueezy.com/checkout/starter' : '#',
-  AGENCY: '#',
-  AGENCY_PRO: '#',
+  STARTER: import.meta.env.VITE_LS_STARTER_URL || '#',
+  AGENCY: import.meta.env.VITE_LS_AGENCY_URL || '#',
+  AGENCY_PRO: import.meta.env.VITE_LS_AGENCY_PRO_URL || '#',
 };
+
+function LsOutageBanner() {
+  const { data } = useQuery('ls-status', billingApi.getLsStatus, {
+    staleTime: 2 * 60 * 1000,
+    retry: false,
+    onError: () => {},
+  });
+
+  if (data?.available !== false) return null;
+
+  return (
+    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
+      <AlertTriangle size={15} className="text-yellow-400 mt-0.5 shrink-0" />
+      <div>
+        <p className="text-sm font-medium text-yellow-400">Payment provider temporarily unavailable</p>
+        <p className="text-xs text-[#94A3B8] mt-0.5">
+          Our payment provider (Lemon Squeezy) is experiencing issues. Subscriptions and upgrades may be delayed —{' '}
+          <strong>your access is not affected.</strong>{' '}
+          <a href="https://status.lemonsqueezy.com" target="_blank" rel="noopener noreferrer" className="text-yellow-400 hover:underline">
+            Check status <ExternalLink size={10} className="inline" />
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function DowngradeModal({
+  newTier,
+  excessClients,
+  onCancel,
+  onDone,
+}: {
+  newTier: string;
+  excessClients: any[];
+  onCancel: () => void;
+  onDone: (url: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set(excessClients.map((c) => c.id)));
+  const [archiving, setArchiving] = useState(false);
+
+  const toggleClient = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleArchiveAndContinue = async () => {
+    if (selected.size === 0) {
+      toast.error('Select at least one client to archive before continuing.');
+      return;
+    }
+    setArchiving(true);
+    try {
+      await Promise.all([...selected].map((id) => clientsApi.archive(id)));
+      qc.invalidateQueries('clients');
+
+      // Re-check downgrade eligibility
+      const result = await billingApi.checkDowngrade(newTier).catch((e: any) => e.response?.data);
+      if (result?.error === 'CLIENT_LIMIT_EXCEEDED') {
+        toast.error(`Still ${result.activeClients - result.newLimit} client(s) over the limit. Archive more to continue.`);
+        setArchiving(false);
+        return;
+      }
+      toast.success('Clients archived. Redirecting to checkout...');
+      onDone(LS_CHECKOUT_URLS[newTier] || '#');
+    } catch {
+      toast.error('Failed to archive clients');
+      setArchiving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#1E293B] border border-[#334155] rounded-2xl w-full max-w-lg p-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Archive size={16} className="text-yellow-400" />
+          <h3 className="text-base font-semibold text-white">Too many active clients</h3>
+        </div>
+        <p className="text-sm text-[#94A3B8] mb-5">
+          The <strong className="text-white">{PLANS.find((p) => p.tier === newTier)?.name}</strong> plan supports up to{' '}
+          <strong className="text-white">{PLANS.find((p) => p.tier === newTier)?.clients}</strong> clients.
+          Select the clients below to archive before switching plans. Archived clients are hidden but not deleted.
+        </p>
+
+        <div className="space-y-2 max-h-64 overflow-y-auto mb-5">
+          {excessClients.map((c) => (
+            <label
+              key={c.id}
+              className="flex items-center gap-3 bg-[#0F172A] rounded-lg px-3 py-2.5 cursor-pointer hover:bg-[#0F172A]/80 transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(c.id)}
+                onChange={() => toggleClient(c.id)}
+                className="w-4 h-4 accent-[#6366F1]"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white font-medium truncate">{c.name}</p>
+                <p className="text-xs text-[#64748B]">{c.contactEmail}</p>
+              </div>
+              {c.lastReportAt && (
+                <span className="text-[10px] text-[#475569] shrink-0">Last report: {formatDate(c.lastReportAt)}</span>
+              )}
+            </label>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 border border-[#334155] text-[#94A3B8] hover:text-white py-2.5 rounded-lg text-sm transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleArchiveAndContinue}
+            disabled={archiving || selected.size === 0}
+            className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            {archiving ? 'Archiving...' : `Archive ${selected.size} & Continue`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ReferralSection({ agency }: { agency: any }) {
   const isEligible = ['AGENCY', 'AGENCY_PRO'].includes(agency?.subscriptionTier);
@@ -76,6 +208,32 @@ function ReferralSection({ agency }: { agency: any }) {
 
 export default function Billing() {
   const { data: agency, isLoading } = useQuery('agency', agencyApi.get);
+  const [downgradeModal, setDowngradeModal] = useState<{ newTier: string; excessClients: any[] } | null>(null);
+
+  const handlePlanAction = async (planTier: string) => {
+    const currentTier = agency?.subscriptionTier || 'FREE_TRIAL';
+
+    // Determine tier ordering for downgrade detection
+    const tierOrder: Record<string, number> = { FREE_TRIAL: 0, STARTER: 1, AGENCY: 2, AGENCY_PRO: 3 };
+    const isDowngrade = (tierOrder[planTier] ?? 0) < (tierOrder[currentTier] ?? 0);
+
+    if (isDowngrade) {
+      try {
+        await billingApi.checkDowngrade(planTier);
+        // No conflict — proceed to checkout
+        window.open(LS_CHECKOUT_URLS[planTier] || '#', '_blank');
+      } catch (e: any) {
+        const errData = e.response?.data;
+        if (errData?.error === 'CLIENT_LIMIT_EXCEEDED') {
+          setDowngradeModal({ newTier: planTier, excessClients: errData.excessClients || [] });
+        } else {
+          window.open(LS_CHECKOUT_URLS[planTier] || '#', '_blank');
+        }
+      }
+    } else {
+      window.open(LS_CHECKOUT_URLS[planTier] || '#', '_blank');
+    }
+  };
 
   if (isLoading) return <PageLoader />;
 
@@ -90,6 +248,9 @@ export default function Billing() {
         <h1 className="text-2xl font-bold text-white">Billing & Plans</h1>
         <p className="text-sm text-[#94A3B8]">Manage your subscription and plan</p>
       </div>
+
+      {/* LS outage banner */}
+      <LsOutageBanner />
 
       {/* Current plan */}
       <div className="card p-6 mb-6">
@@ -140,10 +301,12 @@ export default function Billing() {
                   Current Plan
                 </div>
               ) : (
-                <a href={LS_CHECKOUT_URLS[plan.tier] || '#'} target="_blank" rel="noopener noreferrer"
-                  className={`block w-full py-2 text-center text-xs font-medium rounded-lg transition-colors ${plan.popular ? 'bg-[#6366F1] hover:bg-[#4F46E5] text-white' : 'border border-[#334155] hover:border-[#475569] text-[#94A3B8] hover:text-white'}`}>
+                <button
+                  onClick={() => handlePlanAction(plan.tier)}
+                  className={`w-full py-2 text-center text-xs font-medium rounded-lg transition-colors ${plan.popular ? 'bg-[#6366F1] hover:bg-[#4F46E5] text-white' : 'border border-[#334155] hover:border-[#475569] text-[#94A3B8] hover:text-white'}`}
+                >
                   {isTrial ? 'Subscribe' : agency?.subscriptionTier === 'STARTER' && plan.tier === 'AGENCY' ? 'Upgrade' : 'Switch'}
-                </a>
+                </button>
               )}
             </div>
           );
@@ -173,6 +336,19 @@ export default function Billing() {
       <p className="text-xs text-[#475569] text-center mt-4">
         Billing powered by Lemon Squeezy · All prices in USD · Cancel anytime
       </p>
+
+      {/* Downgrade archive-selection modal */}
+      {downgradeModal && (
+        <DowngradeModal
+          newTier={downgradeModal.newTier}
+          excessClients={downgradeModal.excessClients}
+          onCancel={() => setDowngradeModal(null)}
+          onDone={(url) => {
+            setDowngradeModal(null);
+            window.open(url, '_blank');
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const api = axios.create({
   baseURL: '/api',
@@ -29,6 +30,16 @@ api.interceptors.response.use(
         window.dispatchEvent(new CustomEvent('show-upgrade-modal', { detail: { reason: 'feature_locked' } }));
       } else if (errCode === 'REPORT_LIMIT_REACHED') {
         window.dispatchEvent(new CustomEvent('show-upgrade-modal', { detail: { reason: 'report_limit' } }));
+      }
+    }
+    if (error.response?.status === 429) {
+      toast.error('Too many requests — please wait a moment.');
+      // Auto-retry after 5 seconds for non-destructive reads only
+      const method = error.config?.method?.toLowerCase();
+      if (method === 'get') {
+        return new Promise((resolve, reject) => {
+          setTimeout(() => api(error.config).then(resolve).catch(reject), 5000);
+        });
       }
     }
     return Promise.reject(error);
@@ -100,4 +111,10 @@ export const referralsApi = {
 // Connector refresh
 export const connectorsRefreshApi = {
   refresh: (id: string) => api.post(`/connectors/${id}/refresh`).then(r => r.data),
+};
+
+// Billing
+export const billingApi = {
+  getLsStatus: () => api.get('/billing/ls-status').then(r => r.data),
+  checkDowngrade: (newTier: string) => api.post('/billing/check-downgrade', { newTier }).then(r => r.data),
 };

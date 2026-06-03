@@ -1,10 +1,21 @@
+import { useEffect } from 'react';
 import { SignUp as ClerkSignUp } from '@clerk/clerk-react';
 import { Zap } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export default function SignUp() {
+  const [searchParams] = useSearchParams();
+
+  // Capture ?ref= referral code and store to sessionStorage for Onboarding to consume
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) {
+      sessionStorage.setItem('rc_ref_code', ref);
+    }
+  }, [searchParams]);
+
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center px-4">
       <div className="w-full max-w-md">

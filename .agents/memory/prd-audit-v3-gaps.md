@@ -45,3 +45,25 @@ description: All gaps found and fixed during the full PRD v3.0 audit — error c
 
 ## Stale report cleanup — already implemented
 - `startStaleReportCleanup()` is called in `index.ts` on startup; resets generating reports older than 35s to error
+
+---
+
+## Third-pass gaps (all implemented)
+
+**429 auto-retry in api.ts:** intercepts 429 → toast + auto-retry GET after 5s. Never retries writes. `react-hot-toast` imported directly in `api.ts`.
+
+**user.deleted LS cancellation (webhooks.ts):** calls `fetch(.../subscriptions/:id, DELETE)` with `LEMONSQUEEZY_API_KEY` before setting `subscriptionStatus: 'cancelled'`. Error caught and logged, status update still proceeds.
+
+**?ref= capture in SignUp.tsx:** uses `useSearchParams()`, stores `ref` param to `sessionStorage('rc_ref_code')` in `useEffect`. Onboarding already reads this key.
+
+**Delivery history + Retry button in ClientDetail.tsx:** `DeliveryHistory` sub-component at bottom of right column. Fetches `clientsApi.getDeliveries(clientId)`. Shows table: sentAt, status, openedAt. Retry button (for `failed`/`bounced`) calls `reportsApi.send(delivery.reportId)`.
+
+**Downgrade guard — new billing router:** `server/src/routes/billing.ts` mounted at `/api/billing`:
+  - `GET /ls-status` — hits LS API with 5s timeout, returns `{ available: bool }`
+  - `POST /check-downgrade` — counts active clients, returns `CLIENT_LIMIT_EXCEEDED` + `excessClients[]` if over new limit
+  Tier limits: STARTER=5, AGENCY=15, FREE_TRIAL/AGENCY_PRO=∞
+  `Billing.tsx` calls `checkDowngrade` before any "Switch" that reduces tier. Shows `DowngradeModal` with checkboxes → archives selected → re-checks → opens LS checkout.
+
+**LS outage banner in Billing.tsx:** `LsOutageBanner` queries `billingApi.getLsStatus()` (staleTime 2min). Shows yellow banner + link to status.lemonsqueezy.com when `available === false`.
+
+**billingApi added to api.ts:** `getLsStatus()` and `checkDowngrade(newTier)`.
