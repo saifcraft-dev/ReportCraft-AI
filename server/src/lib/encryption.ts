@@ -5,8 +5,20 @@ const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
 function getKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY || 'default-dev-key-32-chars-minimum!';
-  return Buffer.from(key.padEnd(32).slice(0, 32), 'utf8');
+  const key = process.env.ENCRYPTION_KEY;
+  if (key) {
+    // Support 64-char hex key (32 bytes) per PRD §5.3
+    if (/^[0-9a-fA-F]{64}$/.test(key)) {
+      return Buffer.from(key, 'hex');
+    }
+    // Fallback: use raw string, padded/sliced to 32 bytes
+    return Buffer.from(key.padEnd(32).slice(0, 32), 'utf8');
+  }
+  // Dev-only default key — warn in production
+  if (process.env.NODE_ENV === 'production') {
+    console.error('ENCRYPTION_KEY not set in production — tokens are insecure!');
+  }
+  return Buffer.from('default-dev-key-32-chars-minimum!'.slice(0, 32), 'utf8');
 }
 
 export function encrypt(text: string): string {

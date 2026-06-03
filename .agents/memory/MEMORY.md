@@ -1,3 +1,4 @@
 - [Demo mode auth](demo-mode-auth.md) — auth middleware uses upsert (not find+create) for demo agency to avoid race-condition P2002 errors
 - [ProtectedLayout Clerk hooks](protected-layout-hooks.md) — useAuth must only render in a child component (ClerkGuard), never called conditionally at top level
 - [ReportCraft stack](reportcraft-stack.md) — port layout, demo mode, key env vars, and architectural decisions for this project
+- [PRD audit v3 gaps fixed](prd-audit-v3-gaps.md) — all PRD §15 gaps implemented; key decisions on error codes, encryption key, and new routes

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { ArrowLeft, Download, Send, RefreshCw, ThumbsUp, ThumbsDown, Share2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Download, Send, RefreshCw, ThumbsUp, ThumbsDown, Share2, ExternalLink, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reportsApi } from '../../../lib/api';
 import { trackEvent } from '../../../lib/posthog';
-import { formatDate, formatDelta, formatNumber, formatCurrency, formatPercent } from '../../../utils/format';
+import { formatDate, formatDelta, formatNumber } from '../../../utils/format';
 import StatusBadge from '../../../components/shared/StatusBadge';
 import { PageLoader } from '../../../components/shared/LoadingSpinner';
 
@@ -33,6 +33,117 @@ function NarrativeSection({ title, body, color }: { title: string; body: string;
     <div className="card p-5 mb-3">
       <h4 className="text-sm font-semibold mb-2" style={{ color }}>{title}</h4>
       <p className="text-sm text-[#CBD5E1] leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+function ToneSelector({ current, onChange, disabled }: { current: string; onChange: (t: string) => void; disabled?: boolean }) {
+  const tones = [
+    { id: 'professional', label: 'Professional' },
+    { id: 'conversational', label: 'Casual' },
+    { id: 'executive', label: 'Executive' },
+  ];
+  return (
+    <div className="flex rounded-lg overflow-hidden border border-[#334155] text-[10px]">
+      {tones.map(t => (
+        <button
+          key={t.id}
+          disabled={disabled}
+          onClick={() => onChange(t.id)}
+          className={`flex-1 py-1.5 font-medium transition-colors ${current === t.id ? 'bg-[#6366F1] text-white' : 'text-[#64748B] hover:text-white hover:bg-[#1E293B]'}`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DateRangeSelector({ report, clientId, onNewReport }: { report: any; clientId: string; onNewReport: (id: string) => void }) {
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const presets = [
+    { label: '7d', days: 7 },
+    { label: '30d', days: 30 },
+    { label: '90d', days: 90 },
+  ];
+
+  const currentDays = Math.round(
+    (new Date(report.dateRangeEnd).getTime() - new Date(report.dateRangeStart).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  const createReport = async (start: string, end: string) => {
+    setCreating(true);
+    try {
+      const result = await reportsApi.create({
+        clientId,
+        dateRangeStart: start,
+        dateRangeEnd: end,
+        narrativeTone: report.narrativeTone,
+      });
+      onNewReport(result.id);
+      toast.success('Generating new report...');
+    } catch (e: any) {
+      const msg = e.response?.data?.message || e.response?.data?.error || 'Failed to create report';
+      toast.error(msg);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handlePreset = (days: number) => {
+    const end = new Date();
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    createReport(start.toISOString().slice(0, 10), end.toISOString().slice(0, 10));
+  };
+
+  const handleCustom = () => {
+    if (!customStart || !customEnd) { toast.error('Select both dates'); return; }
+    if (customStart > customEnd) { toast.error('Start must be before end'); return; }
+    createReport(customStart, customEnd);
+  };
+
+  return (
+    <div className="card p-3">
+      <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-2 flex items-center gap-1">
+        <Calendar size={10} /> Date Range
+      </p>
+      <div className="flex gap-1 mb-2">
+        {presets.map(p => (
+          <button
+            key={p.label}
+            disabled={creating}
+            onClick={() => handlePreset(p.days)}
+            className={`flex-1 py-1 text-[10px] font-medium rounded transition-colors border ${
+              currentDays === p.days
+                ? 'bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]'
+                : 'border-[#334155] text-[#64748B] hover:text-white hover:border-[#475569]'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-1">
+        <input
+          type="date" value={customStart}
+          onChange={e => setCustomStart(e.target.value)}
+          className="w-full bg-[#0F172A] border border-[#334155] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#6366F1]"
+        />
+        <input
+          type="date" value={customEnd}
+          onChange={e => setCustomEnd(e.target.value)}
+          className="w-full bg-[#0F172A] border border-[#334155] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#6366F1]"
+        />
+        <button
+          onClick={handleCustom} disabled={creating || !customStart || !customEnd}
+          className="w-full py-1 text-[10px] font-medium border border-[#334155] hover:border-[#475569] text-[#64748B] hover:text-white rounded transition-colors disabled:opacity-40"
+        >
+          {creating ? 'Creating...' : 'Apply Custom'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -109,7 +220,7 @@ export default function ReportPreview() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: report, isLoading, refetch } = useQuery(
+  const { data: report, isLoading } = useQuery(
     ['report', id],
     () => reportsApi.get(id!),
     { refetchInterval: (data) => data?.status === 'generating' ? 3000 : false }
@@ -117,7 +228,8 @@ export default function ReportPreview() {
 
   const [exportingPdf, setExportingPdf] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [changingTone, setChangingTone] = useState(false);
 
   const handleExportPdf = async () => {
     setExportingPdf(true);
@@ -151,16 +263,30 @@ export default function ReportPreview() {
     }
   };
 
-  const handleRegenerate = async () => {
-    setRegenerating(true);
+  const handleRefreshData = async () => {
+    setRefreshing(true);
     try {
       await reportsApi.regenerate(id!);
-      toast.success('Regenerating narrative...');
+      toast.success('Refreshing data and narrative...');
       qc.invalidateQueries(['report', id]);
     } catch {
-      toast.error('Failed to regenerate');
+      toast.error('Failed to refresh');
     } finally {
-      setRegenerating(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleToneChange = async (tone: string) => {
+    if (tone === report?.narrativeTone) return;
+    setChangingTone(true);
+    try {
+      await reportsApi.regenerate(id!, tone);
+      toast.success(`Tone changed to ${tone} — regenerating...`);
+      qc.invalidateQueries(['report', id]);
+    } catch {
+      toast.error('Failed to change tone');
+    } finally {
+      setChangingTone(false);
     }
   };
 
@@ -168,11 +294,11 @@ export default function ReportPreview() {
     const enabled = !report?.shareEnabled;
     await reportsApi.share(id!, enabled);
     qc.invalidateQueries(['report', id]);
-    if (enabled) {
-      toast.success('Shareable link enabled!');
-    } else {
-      toast.success('Sharing disabled');
-    }
+    toast.success(enabled ? 'Shareable link enabled!' : 'Sharing disabled');
+  };
+
+  const handleNewReport = (newId: string) => {
+    navigate(`/reports/${newId}`);
   };
 
   if (isLoading) return <PageLoader />;
@@ -182,16 +308,18 @@ export default function ReportPreview() {
   const narrative = report.narrative as any;
   const brandColor = report.agency?.brandColor || '#6366F1';
   const isGenerating = report.status === 'generating';
+  const isBusy = isGenerating || refreshing || changingTone;
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in">
       <div className="flex gap-6">
         {/* Control sidebar */}
-        <div className="w-56 shrink-0 space-y-3 sticky top-0">
+        <div className="w-60 shrink-0 space-y-3 sticky top-0 self-start">
           <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-xs text-[#94A3B8] hover:text-white transition-colors p-1">
             <ArrowLeft size={14} /> Back
           </button>
 
+          {/* Actions */}
           <div className="card p-3 space-y-1.5">
             <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-2">Actions</p>
             <button
@@ -209,11 +337,11 @@ export default function ReportPreview() {
               {sendingEmail ? 'Sending...' : 'Send to Client'}
             </button>
             <button
-              onClick={handleRegenerate} disabled={regenerating || isGenerating}
+              onClick={handleRefreshData} disabled={isBusy}
               className="w-full flex items-center gap-2 text-xs font-medium border border-[#334155] hover:border-[#475569] disabled:opacity-50 text-[#94A3B8] hover:text-white px-3 py-2 rounded-lg transition-colors"
             >
-              <RefreshCw size={12} className={regenerating ? 'animate-spin' : ''} />
-              Regenerate AI
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Refreshing...' : 'Refresh Data'}
             </button>
             <button
               onClick={handleShare}
@@ -232,13 +360,37 @@ export default function ReportPreview() {
             )}
           </div>
 
+          {/* Tone selector */}
+          <div className="card p-3">
+            <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-2">Narrative Tone</p>
+            <ToneSelector
+              current={report.narrativeTone || 'professional'}
+              onChange={handleToneChange}
+              disabled={isBusy}
+            />
+            {changingTone && (
+              <p className="text-[10px] text-[#64748B] mt-1.5 text-center">Regenerating with new tone...</p>
+            )}
+          </div>
+
+          {/* Date range selector */}
+          {!isGenerating && report.clientId && (
+            <DateRangeSelector
+              report={report}
+              clientId={report.clientId}
+              onNewReport={handleNewReport}
+            />
+          )}
+
+          {/* Info */}
           <div className="card p-3">
             <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider mb-2">Info</p>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between"><span className="text-[#64748B]">Status</span><StatusBadge status={report.status} /></div>
               <div className="flex justify-between"><span className="text-[#64748B]">Client</span><span className="text-white truncate max-w-[90px]">{report.client?.name}</span></div>
-              <div className="flex justify-between"><span className="text-[#64748B]">Tone</span><span className="text-white capitalize">{report.narrativeTone}</span></div>
+              <div className="flex justify-between"><span className="text-[#64748B]">Range</span><span className="text-white text-[10px]">{formatDate(report.dateRangeStart)} – {formatDate(report.dateRangeEnd)}</span></div>
               {report.generationDurationMs && <div className="flex justify-between"><span className="text-[#64748B]">Gen time</span><span className="text-white">{(report.generationDurationMs / 1000).toFixed(1)}s</span></div>}
+              {report.aiModel && <div className="flex justify-between"><span className="text-[#64748B]">Model</span><span className="text-white text-[10px] truncate max-w-[90px]">{report.aiModel}</span></div>}
             </div>
           </div>
         </div>
@@ -324,7 +476,7 @@ export default function ReportPreview() {
                         <span className="text-white text-xs font-bold">AI</span>
                       </div>
                       <h3 className="font-semibold text-white">AI Insight Write</h3>
-                      <span className="text-[10px] text-[#64748B] ml-auto">Cross-channel analysis</span>
+                      <span className="text-[10px] text-[#64748B] ml-auto">Cross-channel analysis · <span className="capitalize">{report.narrativeTone}</span> tone</span>
                     </div>
                   </div>
 

@@ -9,6 +9,7 @@ import Onboarding from './features/onboarding/pages/Onboarding';
 import Dashboard from './features/dashboard/pages/Dashboard';
 import ClientDetail from './features/clients/pages/ClientDetail';
 import ClientSettings from './features/clients/pages/ClientSettings';
+import NewClient from './features/clients/pages/NewClient';
 import Reports from './features/reports/pages/Reports';
 import ReportPreview from './features/reports/pages/ReportPreview';
 import Connectors from './features/connectors/pages/Connectors';
@@ -46,6 +47,7 @@ export default function App() {
       {/* Protected app routes */}
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/clients/new" element={<NewClient />} />
         <Route path="/clients/:id" element={<ClientDetail />} />
         <Route path="/clients/:id/settings" element={<ClientSettings />} />
         <Route path="/reports" element={<Reports />} />

@@ -201,7 +201,10 @@ function generateMockData(): NarrativeData {
 router.get('/:id', async (req: Request, res: Response) => {
   const report = await prisma.report.findFirst({
     where: { id: req.params.id, agencyId: req.agencyId },
-    include: { client: { select: { id: true, name: true, contactEmail: true } } },
+    include: {
+      client: { select: { id: true, name: true, contactEmail: true, contactName: true } },
+      agency: { select: { id: true, name: true, brandColor: true, logoUrl: true, narrativeTone: true } },
+    },
   });
   if (!report) return res.status(404).json({ error: 'Report not found' });
   res.json(report);

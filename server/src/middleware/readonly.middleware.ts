@@ -39,7 +39,7 @@ export async function readOnlyGuard(req: Request, res: Response, next: NextFunct
       agency.trialEndsAt < now
     ) {
       return res.status(403).json({
-        error: 'READ_ONLY_MODE',
+        error: 'ACCOUNT_READ_ONLY',
         reason: 'trial_expired',
         message: 'Your free trial has ended. Please upgrade to continue.',
       });
@@ -50,7 +50,7 @@ export async function readOnlyGuard(req: Request, res: Response, next: NextFunct
       const gracePeriodEnd = new Date(agency.pastDueAt.getTime() + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000);
       if (now > gracePeriodEnd) {
         return res.status(403).json({
-          error: 'READ_ONLY_MODE',
+          error: 'ACCOUNT_READ_ONLY',
           reason: 'past_due_grace_expired',
           message: 'Your account is past due. Please update your payment method to continue.',
         });
@@ -60,7 +60,7 @@ export async function readOnlyGuard(req: Request, res: Response, next: NextFunct
     // Check cancelled
     if (agency.subscriptionStatus === 'cancelled') {
       return res.status(403).json({
-        error: 'READ_ONLY_MODE',
+        error: 'ACCOUNT_READ_ONLY',
         reason: 'subscription_cancelled',
         message: 'Your subscription has been cancelled. Please resubscribe to continue.',
       });

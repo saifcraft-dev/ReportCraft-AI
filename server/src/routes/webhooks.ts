@@ -134,6 +134,15 @@ router.post('/lemonsqueezy', async (req: Request, res: Response) => {
         where: { id: agencyId },
         data: { subscriptionStatus: 'cancelled' },
       });
+    } else if (eventName === 'order_refunded') {
+      // Refund: revert to trial/cancelled state
+      await prisma.agency.update({
+        where: { id: agencyId },
+        data: {
+          subscriptionStatus: 'cancelled',
+          subscriptionTier: 'FREE_TRIAL',
+        },
+      });
     }
 
     res.json({ received: true });
