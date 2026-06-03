@@ -19,6 +19,18 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       window.location.href = '/sign-in?reason=session_expired';
     }
+    if (error.response?.status === 403) {
+      const errCode = error.response?.data?.error;
+      if (errCode === 'ACCOUNT_READ_ONLY') {
+        const sub = error.response?.data?.subscriptionStatus;
+        const reason = sub === 'trial_expired' || !sub ? 'trial_expired' : 'feature_locked';
+        window.dispatchEvent(new CustomEvent('show-upgrade-modal', { detail: { reason } }));
+      } else if (errCode === 'FEATURE_LOCKED') {
+        window.dispatchEvent(new CustomEvent('show-upgrade-modal', { detail: { reason: 'feature_locked' } }));
+      } else if (errCode === 'REPORT_LIMIT_REACHED') {
+        window.dispatchEvent(new CustomEvent('show-upgrade-modal', { detail: { reason: 'report_limit' } }));
+      }
+    }
     return Promise.reject(error);
   }
 );

@@ -17,6 +17,8 @@ import Settings from './features/settings/pages/Settings';
 import Billing from './features/settings/pages/Billing';
 import Team from './features/settings/pages/Team';
 import PublicReport from './features/public-report/pages/PublicReport';
+import Privacy from './features/legal/pages/Privacy';
+import Terms from './features/legal/pages/Terms';
 import NotFound from './components/shared/NotFound';
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -37,6 +39,8 @@ export default function App() {
         <Route path="/sign-up" element={<SignUp />} />
         <Route path="/sign-up/*" element={<SignUp />} />
         <Route path="/p/:shareToken" element={<PublicReport />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
       </Route>
 
       {/* Onboarding */}

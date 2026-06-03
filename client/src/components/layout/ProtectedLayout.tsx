@@ -7,6 +7,7 @@ import { agencyApi } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { identifyUser } from '../../lib/posthog';
 import { WifiOff } from 'lucide-react';
+import UpgradeModal from '../shared/UpgradeModal';
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -59,6 +60,7 @@ function NetworkErrorBanner() {
 function AppShell({ requireOnboarding = true }: Props) {
   const navigate = useNavigate();
   const { data: agency, isLoading } = useQuery('agency', agencyApi.get, { retry: 1, onError: () => {} });
+  const [upgradeModal, setUpgradeModal] = useState<{ reason: any } | null>(null);
 
   useEffect(() => {
     if (!isLoading && agency && requireOnboarding && !agency.onboardingCompletedAt) {
@@ -72,6 +74,15 @@ function AppShell({ requireOnboarding = true }: Props) {
     }
   }, [agency?.id, agency?.subscriptionTier]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setUpgradeModal({ reason: detail?.reason || 'feature_locked' });
+    };
+    window.addEventListener('show-upgrade-modal', handler);
+    return () => window.removeEventListener('show-upgrade-modal', handler);
+  }, []);
+
   return (
     <div className="flex h-screen bg-[#0F172A] overflow-hidden">
       <Sidebar agency={agency} />
@@ -84,6 +95,13 @@ function AppShell({ requireOnboarding = true }: Props) {
           <Outlet />
         </main>
       </div>
+      {upgradeModal && (
+        <UpgradeModal
+          reason={upgradeModal.reason}
+          currentTier={agency?.subscriptionTier}
+          onClose={() => setUpgradeModal(null)}
+        />
+      )}
     </div>
   );
 }

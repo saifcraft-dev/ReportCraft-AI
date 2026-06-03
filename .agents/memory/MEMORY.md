@@ -2,3 +2,4 @@
 - [ProtectedLayout Clerk hooks](protected-layout-hooks.md) — useAuth must only render in a child component (ClerkGuard), never called conditionally at top level
 - [ReportCraft stack](reportcraft-stack.md) — port layout, demo mode, key env vars, and architectural decisions for this project
 - [PRD audit v3 gaps fixed](prd-audit-v3-gaps.md) — all PRD §15 gaps implemented; key decisions on error codes, encryption key, and new routes
+- [Global upgrade modal pattern](upgrade-modal-pattern.md) — api.ts fires CustomEvent 'show-upgrade-modal'; ProtectedLayout listens and renders UpgradeModal; FEATURE_LOCKED/ACCOUNT_READ_ONLY/REPORT_LIMIT_REACHED all routed through this

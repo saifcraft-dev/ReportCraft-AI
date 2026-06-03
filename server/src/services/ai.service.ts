@@ -34,6 +34,8 @@ export interface NarrativeResult {
   keyWins: string;
   areasOfConcern: string;
   recommendations: string;
+  wordCount?: number;
+  generatedAt?: string;
 }
 
 const toneInstructions: Record<string, string> = {

@@ -47,8 +47,8 @@ function ReferralSection({ agency }: { agency: any }) {
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
           { label: 'Your Referral Code', value: referralData?.referralCode || '—' },
-          { label: 'Referrals Sent', value: referralData?.referralCount ?? 0 },
-          { label: 'Credits Earned', value: '—' },
+          { label: 'Converted', value: `${referralData?.converted ?? 0} / ${referralData?.referralCount ?? 0}` },
+          { label: 'Credits Earned', value: referralData?.creditsEarned != null ? `${referralData.creditsEarned} mo` : '—' },
         ].map(stat => (
           <div key={stat.label} className="bg-[#0F172A] rounded-lg p-3 text-center">
             <p className="text-lg font-bold text-white">{stat.value}</p>

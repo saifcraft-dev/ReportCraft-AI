@@ -119,12 +119,25 @@ async function generateReportAsync(reportId: string, client: any, tone: string) 
       narrativeResult = generateMockNarrative(client.name);
     }
 
+    // Count total words across all narrative sections and add metadata
+    const totalWords = Object.values(narrativeResult)
+      .filter((v): v is string => typeof v === 'string')
+      .join(' ')
+      .split(/\s+/)
+      .filter(Boolean).length;
+
+    const narrativeWithMeta = {
+      ...narrativeResult,
+      wordCount: totalWords,
+      generatedAt: new Date().toISOString(),
+    };
+
     await prisma.report.update({
       where: { id: reportId },
       data: {
         status: 'ready',
         rawData: rawData as any,
-        narrative: narrativeResult as any,
+        narrative: narrativeWithMeta as any,
         aiModel,
         generationDurationMs: Date.now() - startTime,
       },
@@ -252,6 +265,19 @@ router.put('/:id/rating', async (req: Request, res: Response) => {
 
 router.put('/:id/share', async (req: Request, res: Response) => {
   const { enabled } = req.body;
+
+  // Sharing is Agency Pro only
+  if (enabled) {
+    const agency = await prisma.agency.findUnique({ where: { id: req.agencyId }, select: { subscriptionTier: true } });
+    if (agency?.subscriptionTier !== 'AGENCY_PRO') {
+      return res.status(403).json({
+        error: 'FEATURE_LOCKED',
+        message: 'Shareable client portals require the Agency Pro plan.',
+        upgradeUrl: '/settings/billing',
+      });
+    }
+  }
+
   const report = await prisma.report.findFirst({
     where: { id: req.params.id, agencyId: req.agencyId },
   });

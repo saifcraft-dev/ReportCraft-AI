@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Zap, Check, ArrowRight, BarChart3, Brain, FileText, Mail, Shield, Clock } from 'lucide-react';
 
 const features = [
@@ -26,6 +27,13 @@ const competitors = [
 ];
 
 export default function Landing() {
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) sessionStorage.setItem('referral_code', ref);
+  }, [searchParams]);
+
   return (
     <div className="min-h-screen bg-[#0F172A] text-white">
       {/* Nav */}

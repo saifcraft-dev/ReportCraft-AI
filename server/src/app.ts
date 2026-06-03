@@ -38,6 +38,12 @@ const authLimiter = rateLimit({
   windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
   keyGenerator: (req) => (req as any).agencyId || req.ip || 'unknown',
 });
+// Strict rate limiter for report generation: 10 per minute per agency
+const reportGenLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => (req as any).agencyId || req.ip || 'unknown',
+  message: { error: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded. You can generate up to 10 reports per minute. Please try again shortly.' },
+});
 
 // Webhook routes (raw body needed for signature verification)
 app.use('/api/webhooks', express.json({ type: '*/*' }), ipLimiter, webhooksRouter);
@@ -49,7 +55,7 @@ app.use(express.urlencoded({ extended: true }));
 // Health check (no auth, no DB query)
 app.get('/health', (_, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// Public report route (no auth)
+// Public report route (no auth) — strips sensitive internal fields
 app.get('/api/public/reports/:shareToken', async (req, res) => {
   const { prisma } = await import('./lib/db');
   const report = await prisma.report.findFirst({
@@ -60,7 +66,11 @@ app.get('/api/public/reports/:shareToken', async (req, res) => {
     },
   });
   if (!report) return res.status(404).json({ error: 'Report not found' });
-  res.json(report);
+
+  // Strip sensitive/internal fields before returning to public
+  const { agencyId, aiModel, narrativeRating, narrativeRatingSection, narrativeRatingNote,
+    generationDurationMs, status, shareToken, ...publicReport } = report as any;
+  res.json(publicReport);
 });
 
 // Protected API routes
@@ -68,6 +78,7 @@ app.use('/api', authLimiter, authMiddleware as any);
 app.use('/api', readOnlyGuard as any);
 app.use('/api/agencies', agenciesRouter);
 app.use('/api/clients', clientsRouter);
+app.post('/api/reports', reportGenLimiter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/reports', pdfRouter);
 app.use('/api/connectors', connectorsRouter);

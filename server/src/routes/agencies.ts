@@ -21,6 +21,8 @@ const updateAgencySchema = z.object({
   timezone: z.string().optional(),
   narrativeTone: z.enum(['professional', 'conversational', 'executive']).optional(),
   anomalyAlertsEnabled: z.boolean().optional(),
+  referredByCode: z.string().max(32).optional(),
+  onboardingCompletedAt: z.string().optional().transform(v => v ? new Date(v) : undefined),
 });
 
 router.get('/me', async (req: Request, res: Response) => {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from 'react-query';
 import { Check, ArrowRight, ArrowLeft, Zap, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -28,6 +28,8 @@ function StepBar({ current }: { current: number }) {
 export default function Onboarding() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const refCode = searchParams.get('ref') || sessionStorage.getItem('referral_code') || '';
   const [step, setStep] = useState(0);
   const [agencyForm, setAgencyForm] = useState({ name: '', brandColor: '#6366F1' });
   const [clientForm, setClientForm] = useState({ name: '', contactEmail: '', contactName: '' });
@@ -45,7 +47,10 @@ export default function Onboarding() {
   const handleStep1 = async () => {
     if (!agencyForm.name.trim()) { toast.error('Agency name is required'); return; }
     try {
-      await updateAgencyMutation.mutateAsync({ name: agencyForm.name, brandColor: agencyForm.brandColor });
+      const payload: any = { name: agencyForm.name, brandColor: agencyForm.brandColor };
+      if (refCode) payload.referredByCode = refCode;
+      await updateAgencyMutation.mutateAsync(payload);
+      if (refCode) sessionStorage.removeItem('referral_code');
       if (logoFile) { try { await agencyApi.uploadLogo(logoFile); } catch {} }
       setStep(1);
     } catch { toast.error('Failed to save agency profile'); }

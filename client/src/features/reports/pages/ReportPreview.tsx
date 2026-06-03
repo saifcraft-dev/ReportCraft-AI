@@ -160,7 +160,14 @@ function RatingWidget({ reportId, currentRating }: { reportId: string; currentRa
     { onSuccess: (data) => { setRated(data.narrativeRating); qc.invalidateQueries(['report', reportId]); setShowFeedback(false); } }
   );
 
-  const sections = ['Executive Summary', 'Campaign Performance', 'Key Wins', 'Areas of Concern', 'Recommendations', 'Overall quality'];
+  const sections = [
+    { label: 'Executive Summary', value: 'executive_summary' },
+    { label: 'Campaign Performance', value: 'campaign_performance' },
+    { label: 'Key Wins', value: 'key_wins' },
+    { label: 'Areas of Concern', value: 'areas_of_concern' },
+    { label: 'Recommendations', value: 'recommendations' },
+    { label: 'Overall quality', value: 'overall' },
+  ];
 
   return (
     <div className="card p-4 mt-4">
@@ -189,7 +196,7 @@ function RatingWidget({ reportId, currentRating }: { reportId: string; currentRa
               className="w-full bg-[#0F172A] border border-[#334155] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-[#6366F1]"
             >
               <option value="">Select section</option>
-              {sections.map(s => <option key={s} value={s}>{s}</option>)}
+              {sections.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
           <div className="mb-2">
@@ -391,6 +398,8 @@ export default function ReportPreview() {
               <div className="flex justify-between"><span className="text-[#64748B]">Range</span><span className="text-white text-[10px]">{formatDate(report.dateRangeStart)} – {formatDate(report.dateRangeEnd)}</span></div>
               {report.generationDurationMs && <div className="flex justify-between"><span className="text-[#64748B]">Gen time</span><span className="text-white">{(report.generationDurationMs / 1000).toFixed(1)}s</span></div>}
               {report.aiModel && <div className="flex justify-between"><span className="text-[#64748B]">Model</span><span className="text-white text-[10px] truncate max-w-[90px]">{report.aiModel}</span></div>}
+              {narrative?.wordCount && <div className="flex justify-between"><span className="text-[#64748B]">Words</span><span className="text-white">{narrative.wordCount}</span></div>}
+              {narrative?.generatedAt && <div className="flex justify-between"><span className="text-[#64748B]">Generated</span><span className="text-white text-[10px]">{formatDate(narrative.generatedAt)}</span></div>}
             </div>
           </div>
         </div>
