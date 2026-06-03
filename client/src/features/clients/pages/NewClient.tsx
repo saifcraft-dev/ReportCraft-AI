@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from 'react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, User, Building2, Globe, Mail, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clientsApi, agencyApi } from '../../../lib/api';
 import UpgradeModal from '../../../components/shared/UpgradeModal';
 
 const industries = ['E-commerce', 'SaaS / Tech', 'Healthcare', 'Real Estate', 'Finance', 'Education', 'Retail', 'Agency', 'Other'];
+
+const inputBase =
+  'w-full bg-[#0A0F1E] border border-[#334155] rounded-xl px-4 py-3 text-sm text-white placeholder-[#475569] focus:outline-none focus:border-[#6366F1] focus:ring-2 focus:ring-[#6366F1]/15 transition-all duration-200 min-h-[48px]';
 
 export default function NewClient() {
   const navigate = useNavigate();
@@ -18,10 +21,7 @@ export default function NewClient() {
   const { data: agency } = useQuery('agency', agencyApi.get);
 
   const mutation = useMutation(clientsApi.create, {
-    onSuccess: (client) => {
-      toast.success('Client created!');
-      navigate(`/clients/${client.id}`);
-    },
+    onSuccess: client => { toast.success('Client created!'); navigate(`/clients/${client.id}`); },
     onError: (e: any) => {
       const data = e.response?.data;
       if (data?.error === 'CLIENT_LIMIT_EXCEEDED') {
@@ -35,89 +35,146 @@ export default function NewClient() {
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!form.name.trim()) errs.name = 'Client name is required';
-    if (!form.contactName.trim()) errs.contactName = 'Contact name is required';
-    if (!form.contactEmail.trim()) errs.contactEmail = 'Contact email is required';
+    if (!form.name.trim())          errs.name         = 'Client name is required';
+    if (!form.contactName.trim())   errs.contactName  = 'Contact name is required';
+    if (!form.contactEmail.trim())  errs.contactEmail = 'Contact email is required';
     else if (!/\S+@\S+\.\S+/.test(form.contactEmail)) errs.contactEmail = 'Invalid email address';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
-    mutation.mutate(form);
-  };
-
-  const field = (label: string, key: keyof typeof form, type = 'text', placeholder = '') => (
-    <div>
-      <label className="block text-xs font-medium text-[#94A3B8] mb-1.5">{label}</label>
-      <input
-        type={type}
-        value={form[key]}
-        maxLength={key === 'name' ? 100 : undefined}
-        onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-        className="w-full bg-[#0F172A] border border-[#334155] rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#475569] focus:outline-none focus:border-[#6366F1] transition-colors"
-        placeholder={placeholder}
-      />
-      {errors[key] && <p className="text-xs text-red-400 mt-1">{errors[key]}</p>}
-    </div>
-  );
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); if (validate()) mutation.mutate(form); };
 
   return (
     <div className="max-w-xl mx-auto animate-fade-in">
-      <div className="flex items-center gap-3 mb-6">
+
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3 mb-7">
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-1.5 text-sm text-[#94A3B8] hover:text-white transition-colors"
+          className="w-9 h-9 flex items-center justify-center border border-[#334155] hover:border-[#475569] hover:bg-white/4 text-[#64748B] hover:text-white rounded-xl transition-all duration-200 shrink-0"
         >
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={15} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-white">Add New Client</h1>
-          <p className="text-sm text-[#94A3B8] mt-0.5">Fill in the details to add a new client to your agency</p>
+          <h1 className="text-xl md:text-2xl font-bold text-white leading-tight">Add New Client</h1>
+          <p className="text-sm text-[#64748B] mt-0.5 leading-snug">Fill in the details to add a client to your agency</p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="card p-6 space-y-5">
-        {field('Client Name *', 'name', 'text', 'Acme Corp')}
+      <form onSubmit={handleSubmit} className="space-y-5">
 
-        <div>
-          <label className="block text-xs font-medium text-[#94A3B8] mb-1.5">Industry</label>
-          <select
-            value={form.industry}
-            onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
-            className="w-full bg-[#0F172A] border border-[#334155] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#6366F1] transition-colors"
-          >
-            <option value="">Select industry</option>
-            {industries.map(i => <option key={i} value={i}>{i}</option>)}
-          </select>
-        </div>
+        {/* ── Client info ── */}
+        <div className="card p-5 md:p-6 space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 size={13} className="text-[#6366F1]" />
+            <p className="text-[10px] font-bold text-[#6366F1] uppercase tracking-widest">Business Details</p>
+          </div>
 
-        {field('Website URL', 'websiteUrl', 'url', 'https://example.com')}
+          {/* Client name */}
+          <div>
+            <label className="block text-xs font-semibold text-[#94A3B8] mb-2">Client Name <span className="text-[#6366F1]">*</span></label>
+            <div className="relative">
+              <Building2 size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] pointer-events-none" />
+              <input
+                type="text"
+                value={form.name}
+                maxLength={100}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className={`${inputBase} pl-10`}
+                placeholder="Acme Corp"
+              />
+            </div>
+            {errors.name && <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1">⚠ {errors.name}</p>}
+          </div>
 
-        <div className="border-t border-[#334155] pt-5">
-          <p className="text-xs font-semibold text-[#6366F1] uppercase tracking-wider mb-4">Contact Person</p>
-          <div className="space-y-4">
-            {field('Contact Name *', 'contactName', 'text', 'Jane Smith')}
-            {field('Contact Email *', 'contactEmail', 'email', 'jane@acmecorp.com')}
+          {/* Industry */}
+          <div>
+            <label className="block text-xs font-semibold text-[#94A3B8] mb-2">Industry</label>
+            <div className="relative">
+              <select
+                value={form.industry}
+                onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
+                className={`${inputBase} appearance-none pr-10`}
+              >
+                <option value="">Select industry</option>
+                {industries.map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#475569] pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Website */}
+          <div>
+            <label className="block text-xs font-semibold text-[#94A3B8] mb-2">Website URL</label>
+            <div className="relative">
+              <Globe size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] pointer-events-none" />
+              <input
+                type="url"
+                value={form.websiteUrl}
+                onChange={e => setForm(f => ({ ...f, websiteUrl: e.target.value }))}
+                className={`${inputBase} pl-10`}
+                placeholder="https://example.com"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-2">
+        {/* ── Contact ── */}
+        <div className="card p-5 md:p-6 space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <User size={13} className="text-[#6366F1]" />
+            <p className="text-[10px] font-bold text-[#6366F1] uppercase tracking-widest">Contact Person</p>
+          </div>
+
+          {/* Contact name */}
+          <div>
+            <label className="block text-xs font-semibold text-[#94A3B8] mb-2">Full Name <span className="text-[#6366F1]">*</span></label>
+            <div className="relative">
+              <User size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] pointer-events-none" />
+              <input
+                type="text"
+                value={form.contactName}
+                onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))}
+                className={`${inputBase} pl-10`}
+                placeholder="Jane Smith"
+              />
+            </div>
+            {errors.contactName && <p className="text-xs text-red-400 mt-1.5">⚠ {errors.contactName}</p>}
+          </div>
+
+          {/* Contact email */}
+          <div>
+            <label className="block text-xs font-semibold text-[#94A3B8] mb-2">Email Address <span className="text-[#6366F1]">*</span></label>
+            <div className="relative">
+              <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] pointer-events-none" />
+              <input
+                type="email"
+                value={form.contactEmail}
+                onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))}
+                className={`${inputBase} pl-10`}
+                placeholder="jane@acmecorp.com"
+              />
+            </div>
+            {errors.contactEmail && <p className="text-xs text-red-400 mt-1.5">⚠ {errors.contactEmail}</p>}
+          </div>
+        </div>
+
+        {/* ── Footer actions ── */}
+        <div className="flex gap-3 pb-4">
           <button
             type="button"
             onClick={() => navigate('/dashboard')}
-            className="flex-1 border border-[#334155] hover:border-[#475569] text-[#94A3B8] hover:text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+            className="flex-1 border border-[#334155] hover:border-[#475569] hover:bg-white/4 text-[#94A3B8] hover:text-white py-3 rounded-xl text-sm font-semibold transition-all duration-200 min-h-[48px]"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={mutation.isLoading}
-            className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+            className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] active:bg-[#4338CA] disabled:opacity-50 text-white py-3 rounded-xl text-sm font-bold transition-all duration-200 min-h-[48px] shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/35"
           >
-            {mutation.isLoading ? 'Creating...' : 'Create Client'}
+            {mutation.isLoading ? 'Creating…' : 'Create Client'}
           </button>
         </div>
       </form>
