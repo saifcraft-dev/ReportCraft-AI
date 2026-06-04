@@ -6,3 +6,9 @@ id = "Dre1Q9aIFG4KoK0WdFN7K"
 uri = "file://test_report_preview.pdf"
 type = "pdf"
 title = "ReportCraft AI — Professional PDF Preview"
+
+[[outputs]]
+id = "YDAAIk09XwiS1DDG9rqBg"
+uri = "file://report_preview_v3.pdf"
+type = "pdf"
+title = "ReportCraft AI — Professional PDF v3"
