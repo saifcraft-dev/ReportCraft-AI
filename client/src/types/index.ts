@@ -71,47 +71,58 @@ export interface NarrativeResult {
 // ─── API response shapes ──────────────────────────────────────────────────────
 
 export interface Agency {
-  id:                     string;
-  name?:                  string | null;
-  logoUrl?:               string | null;
-  brandColor?:            string | null;
-  subscriptionTier:       string;
-  subscriptionStatus:     string;
-  trialEndsAt?:           string | null;
-  onboardingCompletedAt?: string | null;
-  narrativeTone?:         string | null;
-  clerkUserId?:           string;
-  anomalyAlertsEnabled?:  boolean;
+  id:                      string;
+  name?:                   string | null;
+  logoUrl?:                string | null;
+  brandColor?:             string | null;
+  subscriptionTier:        string;
+  subscriptionStatus:      string;
+  trialEndsAt?:            string | null;
+  currentPeriodEnd?:       string | null;
+  onboardingCompletedAt?:  string | null;
+  narrativeTone?:          string | null;
+  clerkUserId?:            string;
+  anomalyAlertsEnabled?:   boolean;
+  timezone?:               string | null;
+  aiReportsUsedThisMonth?: number;
 }
 
 export interface Client {
-  id:               string;
-  name:             string;
-  contactName?:     string | null;
-  contactEmail?:    string | null;
-  industry?:        string | null;
-  logoUrl?:         string | null;
-  goals?:           unknown;
-  lastReportAt?:    string | null;
-  archivedAt?:      string | null;
-  reportSchedule?:  string | null;
+  id:                        string;
+  name:                      string;
+  contactName?:              string | null;
+  contactEmail?:             string | null;
+  industry?:                 string | null;
+  logoUrl?:                  string | null;
+  websiteUrl?:               string | null;
+  goals?:                    unknown;
+  status?:                   string | null;
+  anomalyAlertsEnabled?:     boolean;
+  emailSubjectTemplate?:     string | null;
+  reportScheduleTimezone?:   string | null;
+  lastReportAt?:             string | null;
+  archivedAt?:               string | null;
+  reportSchedule?:           string | null;
 }
 
 export interface Report {
-  id:                  string;
-  clientId:            string;
-  agencyId:            string;
-  status:              'generating' | 'ready' | 'error';
-  rawData:             RawData | null;
-  narrative:           NarrativeResult | null;
-  narrativeTone?:      string | null;
-  aiModel?:            string | null;
-  dateRangeStart:      string;
-  dateRangeEnd:        string;
-  shareEnabled:        boolean;
-  shareToken?:         string | null;
-  createdAt:           string;
-  client?:             Pick<Client, 'id' | 'name'>;
+  id:                    string;
+  clientId:              string;
+  agencyId:              string;
+  status:                'generating' | 'ready' | 'error';
+  rawData:               RawData | null;
+  narrative:             NarrativeResult | null;
+  narrativeTone?:        string | null;
+  narrativeRating?:      number | null;
+  aiModel?:              string | null;
+  generationDurationMs?: number | null;
+  dateRangeStart:        string;
+  dateRangeEnd:          string;
+  shareEnabled:          boolean;
+  shareToken?:           string | null;
+  createdAt:             string;
+  client?:               Pick<Client, 'id' | 'name'>;
+  agency?:               Pick<Agency, 'id' | 'name'>;
 }
 
 export interface OAuthToken {

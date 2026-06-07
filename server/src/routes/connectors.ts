@@ -89,6 +89,53 @@ interface OAuthCallbackConfig {
   successSlug: string;
 }
 
+// ─── OAuth auth-url factory ───────────────────────────────────────────────────
+
+interface OAuthAuthUrlConfig {
+  /** Name of the process.env variable holding the OAuth client/app ID */
+  clientIdEnvVar: string;
+  /** Provider slug — used to derive the redirect URI */
+  providerSlug: 'google' | 'meta' | 'linkedin';
+  /** Message returned when the env var is absent (demo / unconfigured mode) */
+  demoMessage: string;
+  /** Extra query params added to the response when not configured (e.g. comingSoon) */
+  demoExtra?: Record<string, boolean | string>;
+  /**
+   * Return the provider-specific OAuth parameters given the agency and query string.
+   * `redirectUri` is already built from the providerSlug; `state` is already signed.
+   */
+  getAuthParams: (
+    agencyId: string,
+    query:    Record<string, string>,
+  ) => {
+    platform:    string;
+    baseAuthUrl: string;
+    params:      Record<string, string>;
+  };
+}
+
+/**
+ * Returns an Express route handler that generates the OAuth authorization URL
+ * for a given provider, handling the demo/unconfigured guard and state signing.
+ */
+function createOAuthAuthUrlHandler(cfg: OAuthAuthUrlConfig) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const clientId = process.env[cfg.clientIdEnvVar];
+    if (!clientId) {
+      res.json({ url: null, demo: true, ...cfg.demoExtra, message: cfg.demoMessage });
+      return;
+    }
+
+    const query       = req.query as Record<string, string>;
+    const redirectUri = buildRedirectUri(cfg.providerSlug);
+    const { platform, baseAuthUrl, params } = cfg.getAuthParams(req.agencyId, query);
+    const state = generateState(req.agencyId, platform);
+
+    const qs = new URLSearchParams({ ...params, client_id: clientId, redirect_uri: redirectUri, state });
+    res.json({ url: `${baseAuthUrl}?${qs.toString()}` });
+  };
+}
+
 /**
  * Returns an Express route handler that handles the common OAuth callback flow:
  *   1. Extract code / state / error from query
@@ -183,30 +230,22 @@ router.get('/', async (req: Request, res: Response) => {
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 
-router.get('/google/auth-url', async (req: Request, res: Response) => {
-  const platform    = (req.query.platform as string) || 'google_analytics';
-  const clientId    = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = buildRedirectUri('google');
-
-  if (!clientId) {
-    return res.json({ url: null, demo: true, message: 'Google OAuth not configured. Add GOOGLE_CLIENT_ID to enable.' });
-  }
-
-  const scopes = platform === 'google_ads'
-    ? ['https://www.googleapis.com/auth/adwords']
-    : ['https://www.googleapis.com/auth/analytics.readonly'];
-
-  const state = generateState(req.agencyId, platform);
-  const url   = `https://accounts.google.com/o/oauth2/v2/auth`
-    + `?client_id=${clientId}`
-    + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-    + `&response_type=code`
-    + `&scope=${encodeURIComponent(scopes.join(' '))}`
-    + `&access_type=offline&prompt=consent`
-    + `&state=${encodeURIComponent(state)}`;
-
-  res.json({ url });
-});
+router.get('/google/auth-url', createOAuthAuthUrlHandler({
+  clientIdEnvVar: 'GOOGLE_CLIENT_ID',
+  providerSlug:   'google',
+  demoMessage:    'Google OAuth not configured. Add GOOGLE_CLIENT_ID to enable.',
+  getAuthParams(_agencyId, query) {
+    const platform = query.platform || 'google_analytics';
+    const scope    = platform === 'google_ads'
+      ? 'https://www.googleapis.com/auth/adwords'
+      : 'https://www.googleapis.com/auth/analytics.readonly';
+    return {
+      platform,
+      baseAuthUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+      params: { response_type: 'code', scope, access_type: 'offline', prompt: 'consent' },
+    };
+  },
+}));
 
 router.get('/google/callback', createOAuthCallbackHandler({
   successSlug: 'google',
@@ -249,23 +288,18 @@ router.get('/google/callback', createOAuthCallbackHandler({
 
 // ── Meta OAuth ────────────────────────────────────────────────────────────────
 
-router.get('/meta/auth-url', async (req: Request, res: Response) => {
-  const clientId = process.env.META_APP_ID;
-
-  if (!clientId) {
-    return res.json({ url: null, demo: true, message: 'Meta OAuth not configured. Add META_APP_ID to enable.' });
-  }
-
-  const state       = generateState(req.agencyId, 'meta_ads');
-  const redirectUri = buildRedirectUri('meta');
-  const url         = `https://www.facebook.com/v18.0/dialog/oauth`
-    + `?client_id=${clientId}`
-    + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-    + `&scope=ads_read,read_insights`
-    + `&state=${encodeURIComponent(state)}`;
-
-  res.json({ url });
-});
+router.get('/meta/auth-url', createOAuthAuthUrlHandler({
+  clientIdEnvVar: 'META_APP_ID',
+  providerSlug:   'meta',
+  demoMessage:    'Meta OAuth not configured. Add META_APP_ID to enable.',
+  getAuthParams() {
+    return {
+      platform:    'meta_ads',
+      baseAuthUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
+      params:      { scope: 'ads_read,read_insights' },
+    };
+  },
+}));
 
 router.get('/meta/callback', createOAuthCallbackHandler({
   successSlug: 'meta',
@@ -304,22 +338,19 @@ router.get('/meta/callback', createOAuthCallbackHandler({
 
 // ── LinkedIn OAuth ────────────────────────────────────────────────────────────
 
-router.get('/linkedin/auth-url', async (req: Request, res: Response) => {
-  const clientId = process.env.LINKEDIN_CLIENT_ID;
-  if (!clientId) {
-    return res.json({ url: null, comingSoon: true, message: 'LinkedIn Ads connector requires MDP Standard Tier approval. Coming soon.' });
-  }
-
-  const state       = generateState(req.agencyId, 'linkedin_ads');
-  const redirectUri = buildRedirectUri('linkedin');
-  const scopes      = ['r_ads', 'r_ads_reporting', 'r_organization_social'].join('%20');
-  const url         = `https://www.linkedin.com/oauth/v2/authorization`
-    + `?response_type=code&client_id=${clientId}`
-    + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-    + `&scope=${scopes}&state=${encodeURIComponent(state)}`;
-
-  res.json({ url });
-});
+router.get('/linkedin/auth-url', createOAuthAuthUrlHandler({
+  clientIdEnvVar: 'LINKEDIN_CLIENT_ID',
+  providerSlug:   'linkedin',
+  demoMessage:    'LinkedIn Ads connector requires MDP Standard Tier approval. Coming soon.',
+  demoExtra:      { comingSoon: true },
+  getAuthParams() {
+    return {
+      platform:    'linkedin_ads',
+      baseAuthUrl: 'https://www.linkedin.com/oauth/v2/authorization',
+      params:      { response_type: 'code', scope: 'r_ads r_ads_reporting r_organization_social' },
+    };
+  },
+}));
 
 router.get('/linkedin/callback', async (req: Request, res: Response) => {
   // LinkedIn requires a guard before the factory since it may not be configured

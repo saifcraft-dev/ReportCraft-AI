@@ -61,4 +61,10 @@ export const config = {
     /** How long a signed state token remains valid */
     stateExpiryMs: 10 * 60_000,
   },
+
+  /** Report scheduler job settings */
+  scheduler: {
+    /** Number of days the scheduled report covers (end date is today midnight UTC) */
+    reportRangeDays: 30,
+  },
 } as const;
