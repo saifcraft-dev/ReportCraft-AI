@@ -62,15 +62,15 @@ function StepBar({ current }: { current: number }) {
       {/* Desktop: pill steps */}
       <div className="hidden sm:flex items-center justify-center gap-2 mb-10">
         {STEPS.map((s, i) => {
-          const done    = i < current;
-          const active  = i === current;
-          const Icon    = s.icon;
+          const done   = i < current;
+          const active = i === current;
+          const Icon   = s.icon;
           return (
             <div key={s.label} className="flex items-center gap-2">
               <div className="flex items-center gap-2">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
                   done   ? 'bg-emerald-500 shadow-sm shadow-emerald-500/30' :
-                  active ? 'bg-[#6366F1] shadow-md shadow-indigo-500/30' :
+                  active ? 'bg-[#6366F1] shadow-md shadow-indigo-500/40' :
                            'bg-[#1E293B] border border-[#334155]'
                 }`}>
                   {done
@@ -109,7 +109,7 @@ function FormInput({ label, required, ...props }: InputProps) {
       </label>
       <input
         {...props}
-        className="w-full bg-[#0A0F1E] border border-[#334155] rounded-xl px-4 py-3 text-sm text-white placeholder-[#334155] focus:outline-none focus:border-[#6366F1] focus:ring-1 focus:ring-[#6366F1]/40 transition-all duration-200 min-h-[48px]"
+        className="w-full bg-[#0A0F1E] border border-[#334155] rounded-xl px-4 py-3 text-sm text-white placeholder-[#334155] focus:outline-none focus:border-[#6366F1] focus:ring-2 focus:ring-[#6366F1]/20 transition-all duration-200 min-h-[48px] leading-[1.5]"
       />
     </div>
   );
@@ -126,7 +126,7 @@ function PrimaryBtn({ loading, children, className = '', ...props }: BtnProps) {
     <button
       {...props}
       disabled={props.disabled || loading}
-      className={`flex-1 flex items-center justify-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] active:bg-[#4338CA] disabled:opacity-40 disabled:cursor-not-allowed text-white py-3.5 px-6 rounded-xl font-semibold text-sm transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:-translate-y-px min-h-[48px] ${className}`}
+      className={`flex-1 flex items-center justify-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] active:bg-[#4338CA] disabled:opacity-40 disabled:cursor-not-allowed text-white py-3.5 px-6 rounded-xl font-semibold text-sm transition-all duration-200 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/35 hover:-translate-y-0.5 active:translate-y-0 min-h-[48px] ${className}`}
     >
       {loading ? (
         <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -139,10 +139,22 @@ function BackBtn({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-white px-5 py-3.5 border border-[#334155] hover:border-[#475569] rounded-xl transition-all duration-200 min-h-[48px]"
+      className="flex items-center justify-center gap-1.5 text-sm text-[#64748B] hover:text-white px-5 py-3.5 border border-[#334155] hover:border-[#475569] hover:bg-white/5 rounded-xl transition-all duration-200 min-h-[48px] shrink-0"
     >
       <ArrowLeft size={14} /> Back
     </button>
+  );
+}
+
+/* ─── Logo mark ──────────────────────────────────────────── */
+
+function LogoMark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const dims = size === 'lg' ? 'w-12 h-12' : size === 'md' ? 'w-10 h-10' : 'w-9 h-9';
+  const iconSize = size === 'lg' ? 22 : size === 'md' ? 19 : 16;
+  return (
+    <div className={`${dims} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-500/30 shrink-0`}>
+      <Zap size={iconSize} className="text-white" />
+    </div>
   );
 }
 
@@ -250,20 +262,24 @@ export default function Onboarding() {
     <div className="min-h-screen bg-[#0A0F1E] flex flex-col lg:flex-row overflow-x-hidden">
 
       {/* ══ Left branding panel (desktop only) ══ */}
-      <div className="hidden lg:flex lg:w-[420px] xl:w-[480px] shrink-0 flex-col justify-between bg-gradient-to-b from-[#0D1424] to-[#0A0F1E] border-r border-white/5 px-10 py-12">
-        {/* Logo */}
-        <div>
+      <div className="hidden lg:flex lg:w-[420px] xl:w-[480px] shrink-0 flex-col justify-between bg-gradient-to-b from-[#0D1424] to-[#0A0F1E] border-r border-white/5 px-10 py-12 relative overflow-hidden">
+        {/* Decorative glow */}
+        <div className="absolute top-0 left-0 w-72 h-72 bg-[#6366F1]/8 rounded-full blur-3xl pointer-events-none -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute bottom-32 right-0 w-48 h-48 bg-indigo-900/20 rounded-full blur-2xl pointer-events-none translate-x-1/2" />
+
+        <div className="relative">
+          {/* Logo */}
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#6366F1] to-[#4F46E5] rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-500/30">
-              <Zap size={19} className="text-white" />
-            </div>
+            <LogoMark size="md" />
             <div>
-              <p className="text-base font-extrabold text-white leading-tight">ReportCraft <span className="text-[#818CF8]">AI</span></p>
+              <p className="text-base font-extrabold text-white leading-tight tracking-tight">
+                ReportCraft <span className="text-[#818CF8]">AI</span>
+              </p>
               <p className="text-[10px] text-[#475569] font-medium tracking-widest uppercase">Setup wizard</p>
             </div>
           </div>
 
-          <h2 className="text-2xl xl:text-3xl font-bold text-white leading-tight mb-3">
+          <h2 className="text-2xl xl:text-3xl font-bold text-white leading-[1.3] mb-3">
             You're 5 minutes away from your first AI report.
           </h2>
           <p className="text-sm text-[#64748B] leading-[1.7] mb-10">
@@ -277,14 +293,14 @@ export default function Onboarding() {
                 <div className="w-8 h-8 bg-[#6366F1]/12 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
                   <Icon size={15} className="text-[#818CF8]" />
                 </div>
-                <p className="text-sm text-[#94A3B8] leading-[1.6]">{text}</p>
+                <p className="text-sm text-[#94A3B8] leading-[1.65]">{text}</p>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Quote */}
-        <div className="bg-[#111827] rounded-2xl border border-white/5 p-5 mt-10">
+        {/* Testimonial */}
+        <div className="relative bg-gradient-to-br from-[#111827] to-[#0D1424] rounded-2xl border border-white/6 p-5 mt-10 shadow-lg shadow-black/20">
           <div className="flex gap-0.5 mb-3">
             {[...Array(5)].map((_, i) => (
               <Star key={i} size={12} className="text-amber-400 fill-amber-400" />
@@ -293,41 +309,46 @@ export default function Onboarding() {
           <p className="text-sm text-[#94A3B8] leading-[1.7] italic mb-3">
             "We went from 6 hours of manual reporting to one click. Our clients think we hired a data analyst."
           </p>
-          <p className="text-xs font-semibold text-[#64748B]">— Sarah K., Digital Marketing Agency</p>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">S</div>
+            <p className="text-xs font-semibold text-[#64748B]">Sarah K., Digital Marketing Agency</p>
+          </div>
         </div>
       </div>
 
       {/* ══ Right: wizard form ══ */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 py-10 lg:py-12">
+      <div className="flex-1 flex flex-col items-center justify-center px-4 xs:px-6 sm:px-8 py-10 lg:py-12">
 
-        {/* Mobile logo */}
-        <div className="lg:hidden flex items-center gap-2.5 mb-8">
-          <div className="w-9 h-9 bg-gradient-to-br from-[#6366F1] to-[#4F46E5] rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <Zap size={16} className="text-white" />
+        {/* Mobile header */}
+        <div className="lg:hidden w-full max-w-md mb-8">
+          <div className="flex items-center gap-2.5 mb-3">
+            <LogoMark size="sm" />
+            <span className="text-lg font-extrabold text-white tracking-tight">
+              ReportCraft <span className="text-[#818CF8]">AI</span>
+            </span>
           </div>
-          <span className="text-lg font-extrabold text-white">
-            ReportCraft <span className="text-[#818CF8]">AI</span>
-          </span>
+          <p className="text-sm text-[#64748B] leading-[1.6]">
+            Set up your agency in under 5 minutes and get your first AI report.
+          </p>
         </div>
 
         <div className="w-full max-w-md">
-          {/* Step title (mobile only header) */}
-          <div className="lg:hidden text-center mb-2">
-            <p className="text-xs text-[#475569] font-medium">Let's get you set up in under 5 minutes</p>
-          </div>
 
           <StepBar current={step} />
 
           {/* Card */}
-          <div className="bg-[#111827] border border-white/6 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden">
+          <div className="bg-[#111827] border border-white/6 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
+            {/* Top accent line */}
+            <div className="h-px bg-gradient-to-r from-transparent via-[#6366F1]/60 to-transparent" />
+
             <div className="p-6 sm:p-8">
 
               {/* ── Step 0: Agency ── */}
               {step === 0 && (
                 <div className="animate-fade-in">
                   <div className="mb-6">
-                    <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1.5">Your Agency</h1>
-                    <p className="text-sm text-[#64748B] leading-relaxed">Set up your agency profile and branding</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">Your Agency</h1>
+                    <p className="text-sm text-[#64748B] leading-[1.6]">Set up your agency profile and branding</p>
                   </div>
 
                   <div className="space-y-5">
@@ -346,7 +367,7 @@ export default function Onboarding() {
                         Logo <span className="text-[#475569] normal-case font-normal">(optional)</span>
                       </label>
                       <label className="flex items-center gap-3 px-4 py-3 border border-[#334155] border-dashed rounded-xl text-sm text-[#64748B] cursor-pointer hover:border-[#6366F1]/50 hover:text-[#94A3B8] hover:bg-[#6366F1]/5 transition-all duration-200 min-h-[48px]">
-                        <Upload size={15} className="shrink-0" />
+                        <Upload size={15} className="shrink-0 text-[#475569]" />
                         <span className="truncate">{logoFile ? logoFile.name : 'Upload PNG, JPG, or SVG (max 2MB)'}</span>
                         <input
                           type="file"
@@ -362,7 +383,7 @@ export default function Onboarding() {
                       <label className="block text-xs font-semibold text-[#94A3B8] mb-1.5 tracking-wide uppercase">
                         Brand Color
                       </label>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <div
                           className="w-12 h-12 rounded-xl border-2 border-white/10 overflow-hidden relative cursor-pointer shadow-lg shrink-0"
                           style={{ boxShadow: `0 4px 16px ${agencyForm.brandColor}40` }}
@@ -379,9 +400,9 @@ export default function Onboarding() {
                           type="text"
                           value={agencyForm.brandColor}
                           onChange={e => setAgencyForm(f => ({ ...f, brandColor: e.target.value }))}
-                          className="bg-[#0A0F1E] border border-[#334155] rounded-xl px-4 py-3 text-sm text-white font-mono w-32 focus:outline-none focus:border-[#6366F1] focus:ring-1 focus:ring-[#6366F1]/40 transition-all duration-200 min-h-[48px]"
+                          className="bg-[#0A0F1E] border border-[#334155] rounded-xl px-4 py-3 text-sm text-white font-mono w-32 focus:outline-none focus:border-[#6366F1] focus:ring-2 focus:ring-[#6366F1]/20 transition-all duration-200 min-h-[48px]"
                         />
-                        <span className="text-xs text-[#475569]">Click swatch to pick</span>
+                        <span className="hidden xs:block text-xs text-[#475569]">Click swatch to pick</span>
                       </div>
                     </div>
                   </div>
@@ -402,8 +423,8 @@ export default function Onboarding() {
               {step === 1 && (
                 <div className="animate-fade-in">
                   <div className="mb-6">
-                    <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1.5">First Client</h1>
-                    <p className="text-sm text-[#64748B] leading-relaxed">Who are you reporting for?</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">First Client</h1>
+                    <p className="text-sm text-[#64748B] leading-[1.6]">Who are you reporting for?</p>
                   </div>
 
                   <div className="space-y-4">
@@ -450,8 +471,8 @@ export default function Onboarding() {
               {step === 2 && (
                 <div className="animate-fade-in">
                   <div className="mb-6">
-                    <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1.5">Connect Data Source</h1>
-                    <p className="text-sm text-[#64748B] leading-relaxed">Connect at least one platform to generate your first report</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">Connect Data Source</h1>
+                    <p className="text-sm text-[#64748B] leading-[1.6]">Connect at least one platform to generate your first report</p>
                   </div>
 
                   <div className="space-y-3 mb-5">
@@ -460,7 +481,7 @@ export default function Onboarding() {
                       return (
                         <div
                           key={p.id}
-                          className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-200 ${
+                          className={`flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3 p-4 rounded-xl border transition-all duration-200 ${
                             isConnected
                               ? 'border-emerald-500/40 bg-emerald-500/5 shadow-sm shadow-emerald-500/10'
                               : 'border-white/6 bg-[#0A0F1E] hover:border-white/12'
@@ -469,8 +490,8 @@ export default function Onboarding() {
                           <div className="flex items-center gap-3.5">
                             <span className="text-2xl leading-none">{p.emoji}</span>
                             <div>
-                              <p className="text-sm font-semibold text-white">{p.name}</p>
-                              <p className="text-xs text-[#64748B]">{p.desc}</p>
+                              <p className="text-sm font-semibold text-white leading-snug">{p.name}</p>
+                              <p className="text-xs text-[#64748B] leading-snug">{p.desc}</p>
                             </div>
                           </div>
                           {isConnected ? (
@@ -484,7 +505,7 @@ export default function Onboarding() {
                             <button
                               onClick={() => handleAddDemo(p.id)}
                               disabled={addDemoMutation.isLoading}
-                              className="shrink-0 text-xs bg-[#6366F1]/15 hover:bg-[#6366F1]/25 border border-[#6366F1]/30 hover:border-[#6366F1]/50 text-[#818CF8] px-4 py-2 rounded-lg font-semibold transition-all duration-200 min-h-[36px] disabled:opacity-50"
+                              className="self-start xs:self-auto shrink-0 text-xs bg-[#6366F1]/15 hover:bg-[#6366F1]/25 border border-[#6366F1]/30 hover:border-[#6366F1]/50 text-[#818CF8] px-4 py-2 rounded-lg font-semibold transition-all duration-200 min-h-[36px] disabled:opacity-50"
                             >
                               Connect
                             </button>
@@ -494,9 +515,9 @@ export default function Onboarding() {
                     })}
                   </div>
 
-                  <div className="flex items-center gap-2 bg-[#0A0F1E] border border-white/5 rounded-xl px-4 py-3 mb-6">
-                    <Zap size={13} className="text-[#6366F1] shrink-0" />
-                    <p className="text-xs text-[#64748B] leading-relaxed">
+                  <div className="flex items-start gap-2.5 bg-[#0A0F1E] border border-white/5 rounded-xl px-4 py-3.5 mb-6">
+                    <Zap size={14} className="text-[#6366F1] shrink-0 mt-0.5" />
+                    <p className="text-xs text-[#64748B] leading-[1.65]">
                       Demo connectors generate realistic sample data so you can see your first AI report instantly
                     </p>
                   </div>
@@ -516,19 +537,19 @@ export default function Onboarding() {
                   {!generatingReport ? (
                     <>
                       <div className="mb-6">
-                        <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1.5">Generate First Report</h1>
-                        <p className="text-sm text-[#64748B] leading-relaxed">We'll pull 30 days of data and write your first AI narrative</p>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">Generate First Report</h1>
+                        <p className="text-sm text-[#64748B] leading-[1.6]">We'll pull 30 days of data and write your first AI narrative</p>
                       </div>
 
                       {/* What AI will do */}
                       <div className="bg-[#0A0F1E] rounded-xl border border-white/5 p-5 mb-6">
                         <div className="flex items-center gap-2 mb-4">
-                          <div className="w-6 h-6 bg-gradient-to-br from-[#6366F1] to-[#4F46E5] rounded-lg flex items-center justify-center">
+                          <div className="w-6 h-6 bg-gradient-to-br from-[#6366F1] to-[#4F46E5] rounded-lg flex items-center justify-center shrink-0">
                             <Zap size={12} className="text-white" />
                           </div>
                           <p className="text-sm font-semibold text-white">What happens next</p>
                         </div>
-                        <div className="space-y-2.5">
+                        <div className="space-y-3">
                           {[
                             'Fetch last 30 days of performance data',
                             'Analyze cross-channel metric correlations',
@@ -539,7 +560,7 @@ export default function Onboarding() {
                               <div className="w-5 h-5 bg-[#6366F1]/15 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                                 <span className="text-[9px] font-bold text-[#818CF8]">{i + 1}</span>
                               </div>
-                              <p className="text-sm text-[#94A3B8] leading-snug">{s}</p>
+                              <p className="text-sm text-[#94A3B8] leading-[1.6]">{s}</p>
                             </div>
                           ))}
                         </div>
@@ -564,8 +585,8 @@ export default function Onboarding() {
                         </div>
                       </div>
 
-                      <p className="text-base font-semibold text-white mb-1">{reportLabel}</p>
-                      <p className="text-xs text-[#475569] mb-6">This usually takes 30–60 seconds</p>
+                      <p className="text-base font-semibold text-white mb-1.5 leading-snug">{reportLabel}</p>
+                      <p className="text-xs text-[#475569] mb-6 leading-[1.6]">This usually takes 30–60 seconds</p>
 
                       {/* Progress bar */}
                       <div className="w-full bg-[#1E293B] rounded-full h-2 mb-2 overflow-hidden">
@@ -574,11 +595,11 @@ export default function Onboarding() {
                           style={{ width: `${reportProgress}%` }}
                         />
                       </div>
-                      <p className="text-xs text-[#475569]">{reportProgress}%</p>
+                      <p className="text-xs text-[#475569] mb-6">{reportProgress}%</p>
 
                       {/* Step pills */}
-                      <div className="flex flex-wrap justify-center gap-2 mt-6">
-                        {REPORT_STEPS.map((s, i) => (
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {REPORT_STEPS.map((s) => (
                           <span
                             key={s.label}
                             className={`text-[11px] px-3 py-1 rounded-full font-medium transition-all duration-300 ${
@@ -614,11 +635,11 @@ export default function Onboarding() {
           </div>
 
           {/* Legal note */}
-          <p className="text-center text-[11px] text-[#334155] mt-5 leading-relaxed">
+          <p className="text-center text-[11px] text-[#475569] mt-5 leading-[1.7]">
             By continuing you agree to our{' '}
-            <a href="/terms" className="text-[#475569] hover:text-[#64748B] transition-colors underline">Terms of Service</a>
+            <a href="/terms" className="text-[#64748B] hover:text-[#94A3B8] transition-colors duration-200 underline underline-offset-2">Terms of Service</a>
             {' '}and{' '}
-            <a href="/privacy" className="text-[#475569] hover:text-[#64748B] transition-colors underline">Privacy Policy</a>
+            <a href="/privacy" className="text-[#64748B] hover:text-[#94A3B8] transition-colors duration-200 underline underline-offset-2">Privacy Policy</a>
           </p>
         </div>
       </div>
