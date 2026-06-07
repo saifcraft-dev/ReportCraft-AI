@@ -1,27 +1,35 @@
 import React from 'react';
 import {
   Document, Page, View, Text, StyleSheet, Image,
-  Svg, Rect, Circle, G,
+  Svg, Rect, Circle, Line, Polygon, G, Path,
 } from '@react-pdf/renderer';
 import { renderToBuffer } from '@react-pdf/renderer';
 
-/* ═══════════════════════════════════════════════════
-   DIMENSIONS & HELPERS
-═══════════════════════════════════════════════════ */
-const A4_W       = 595;
-const A4_H       = 842;
-const BAND_H     = 400;          // coloured top band on cover
-const H_PAD      = 44;           // horizontal content padding
-const CONTENT_W  = A4_W - H_PAD * 2; // 507pt
-const KPI_GAP    = 7;
+/* ═══════════════════════════════════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════════════════════════════════ */
+const PW = 595;   // A4 width pt
+const PH = 842;   // A4 height pt
+const ML = 52;    // margin left
+const MR = 52;    // margin right
+const CW = PW - ML - MR;  // content width = 491pt
 
+/* ═══════════════════════════════════════════════════════════════
+   FORMAT HELPERS
+═══════════════════════════════════════════════════════════════ */
 function fmt(v: number | undefined | null, dec = 0): string {
   if (v == null || isNaN(v as number)) return '—';
   return (v as number).toLocaleString('en-US', {
-    minimumFractionDigits: dec, maximumFractionDigits: dec,
+    minimumFractionDigits: dec,
+    maximumFractionDigits: dec,
   });
 }
 function fmtDate(d: string | Date): string {
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  });
+}
+function fmtDateShort(d: string | Date): string {
   return new Date(d).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
@@ -31,277 +39,389 @@ function fmtDur(s: number): string {
   const m = Math.floor(s / 60), sec = Math.round(s % 60);
   return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
 }
-type Delta = { label: string; isPos: boolean; isNA: boolean };
-function calcDelta(cur: number, prev: number): Delta {
-  if (!prev) return { label: 'N/A', isPos: true, isNA: true };
-  const pct = ((cur - prev) / prev) * 100;
-  return { label: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, isPos: pct >= 0, isNA: false };
+function hex2rgb(hex: string): [number, number, number] {
+  const c = hex.replace('#', '');
+  const full = c.length === 3
+    ? c.split('').map(x => x + x).join('')
+    : c;
+  return [
+    parseInt(full.slice(0, 2), 16),
+    parseInt(full.slice(2, 4), 16),
+    parseInt(full.slice(4, 6), 16),
+  ];
+}
+function withOpacity(hex: string, alpha: number): string {
+  const [r, g, b] = hex2rgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function lighten(hex: string, amount: number): string {
+  const [r, g, b] = hex2rgb(hex);
+  const l = (v: number) => Math.min(255, Math.round(v + (255 - v) * amount));
+  const toHex = (v: number) => v.toString(16).padStart(2, '0');
+  return `#${toHex(l(r))}${toHex(l(g))}${toHex(l(b))}`;
 }
 
-/* ═══════════════════════════════════════════════════
+type Delta = { pct: number; label: string; isPos: boolean; isNA: boolean };
+function calcDelta(cur: number | undefined, prev: number | undefined): Delta {
+  if (!cur || !prev || prev === 0) return { pct: 0, label: 'N/A', isPos: true, isNA: true };
+  const pct = ((cur - prev) / prev) * 100;
+  return {
+    pct,
+    label: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,
+    isPos: pct >= 0,
+    isNA: false,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN TOKENS (computed from brand color at render time)
+═══════════════════════════════════════════════════════════════ */
+interface Tokens {
+  primary: string;
+  primaryLight: string;   // very light tint for backgrounds
+  primaryMid: string;     // medium tint for borders/accents
+  dark: string;
+  mid: string;
+  muted: string;
+  border: string;
+  surface: string;
+  success: string;
+  error: string;
+}
+function makeTokens(brandColor: string): Tokens {
+  return {
+    primary: brandColor,
+    primaryLight: withOpacity(brandColor, 0.08),
+    primaryMid: withOpacity(brandColor, 0.25),
+    dark: '#0F172A',
+    mid: '#475569',
+    muted: '#94A3B8',
+    border: '#E2E8F0',
+    surface: '#F8FAFC',
+    success: '#16A34A',
+    error: '#DC2626',
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
    STYLES
-═══════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 const S = StyleSheet.create({
-  /* ── Cover ─────────────────────────────────── */
-  coverPage:        { padding: 0, backgroundColor: '#ffffff' },
-  coverBand:        { width: A4_W, height: BAND_H, position: 'relative', overflow: 'hidden' },
-  coverBandInner:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                      padding: 48, paddingTop: 42, flexDirection: 'column', justifyContent: 'space-between' },
-  coverAgencyName:  { fontSize: 12, color: '#ffffff', fontFamily: 'Helvetica-Bold', letterSpacing: 0.3 },
-  coverLogo:        { height: 26, maxWidth: 130, objectFit: 'contain' },
-  coverLabel:       { fontSize: 8, color: 'rgba(255,255,255,0.5)', fontFamily: 'Helvetica',
-                      letterSpacing: 3, textTransform: 'uppercase', marginBottom: 10 },
-  coverClient:      { fontSize: 34, color: '#ffffff', fontFamily: 'Helvetica-Bold', lineHeight: 1.06 },
-  coverDate:        { fontSize: 10.5, color: 'rgba(255,255,255,0.65)', fontFamily: 'Helvetica', marginTop: 10 },
+  /* ── Pages ── */
+  coverPage:   { width: PW, height: PH, backgroundColor: '#ffffff', position: 'relative', padding: 0 },
+  contentPage: { paddingHorizontal: ML, paddingTop: 0, paddingBottom: 0, backgroundColor: '#ffffff' },
 
-  /* Cover — white meta area */
-  coverMeta:        { flex: 1, paddingHorizontal: 48, paddingTop: 30, paddingBottom: 32,
-                      flexDirection: 'column' },
-  coverDivider:     { height: 1.5, marginBottom: 22 },
-  coverSectionLbl:  { fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase',
-                      letterSpacing: 1.5, marginBottom: 10 },
-  coverMetaRow:     { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 9 },
-  coverMetaKey:     { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#94A3B8',
-                      textTransform: 'uppercase', letterSpacing: 0.8, width: 96 },
-  coverMetaVal:     { fontSize: 9.5, fontFamily: 'Helvetica', color: '#1E293B', flex: 1 },
-  coverPlatformRow: { flexDirection: 'row', gap: 8, marginTop: 20 },
-  coverPlatformPill:{ flex: 1, borderWidth: 1, borderRadius: 6, padding: 10,
-                      flexDirection: 'column', gap: 5 },
-  coverPillDot:     { width: 7, height: 7, borderRadius: 4 },
-  coverPillName:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#334155' },
-  coverPillStatus:  { fontSize: 6.5, fontFamily: 'Helvetica', color: '#22C55E' },
-  coverSpacer:      { flex: 1 },
-  coverTagRow:      { flexDirection: 'row', gap: 8, paddingTop: 16 },
-  coverTag:         { borderWidth: 1, borderRadius: 4, paddingHorizontal: 9, paddingVertical: 4 },
-  coverTagText:     { fontSize: 7, fontFamily: 'Helvetica-Bold',
-                      textTransform: 'uppercase', letterSpacing: 1.2 },
-  coverBottomBar:   { height: 5, position: 'absolute', bottom: 0, left: 0, right: 0 },
+  /* ── Running header ── */
+  rHdr:        { marginBottom: 18 },
+  rHdrBar:     { height: 4, marginBottom: 0 },
+  rHdrRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                 paddingTop: 8, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: '#E2E8F0' },
+  rHdrL:       { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#475569',
+                 textTransform: 'uppercase', letterSpacing: 1 },
+  rHdrR:       { fontSize: 7, fontFamily: 'Helvetica', color: '#94A3B8' },
 
-  /* ── Content page ────────────────────────── */
-  contentPage:      { paddingHorizontal: H_PAD, paddingTop: 0, paddingBottom: 0,
-                      backgroundColor: '#ffffff' },
+  /* ── Running footer ── */
+  rFtr:        { marginTop: 12 },
+  rFtrLine:    { height: 0.5, backgroundColor: '#E2E8F0', marginBottom: 6 },
+  rFtrRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
+  rFtrTxt:     { fontSize: 6.5, color: '#94A3B8', fontFamily: 'Helvetica' },
 
-  /* Running header */
-  runHeader:        { marginBottom: 10 },
-  runHeaderBar:     { height: 3 },
-  runHeaderRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-                      paddingVertical: 7, borderBottomWidth: 0.5, borderBottomColor: '#E2E8F0' },
-  runHeaderLeft:    { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#475569',
-                      textTransform: 'uppercase', letterSpacing: 0.6 },
-  runHeaderRight:   { fontSize: 7.5, fontFamily: 'Helvetica', color: '#94A3B8' },
+  /* ── Section heading ── */
+  secWrap:     { marginTop: 22, marginBottom: 12 },
+  secRow:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  secNum:      { fontSize: 7, fontFamily: 'Helvetica-Bold', letterSpacing: 1.5,
+                 textTransform: 'uppercase' },
+  secTitle:    { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#0F172A', letterSpacing: 0.2 },
+  secRule:     { height: 1 },
 
-  /* Content body wrapper */
-  contentBody:      { flex: 1, paddingBottom: 50 },
+  /* ── KPI card ── */
+  kpiGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 18 },
+  kpiCard:     { backgroundColor: '#F8FAFC', borderRadius: 5, padding: 11,
+                 borderTopWidth: 3, flexDirection: 'column', gap: 4 },
+  kpiLbl:      { fontSize: 6, fontFamily: 'Helvetica-Bold', color: '#64748B',
+                 textTransform: 'uppercase', letterSpacing: 1.2 },
+  kpiVal:      { fontSize: 19, fontFamily: 'Helvetica-Bold', color: '#0F172A', lineHeight: 1 },
+  kpiDeltaPos: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#16A34A' },
+  kpiDeltaNeg: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#DC2626' },
+  kpiDeltaNA:  { fontSize: 7, fontFamily: 'Helvetica', color: '#94A3B8' },
 
-  /* Running footer */
-  runFooter:        { marginTop: 10 },
-  runFooterLine:    { height: 0.5, backgroundColor: '#E2E8F0', marginBottom: 7 },
-  runFooterRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-                      paddingBottom: 14 },
-  runFooterText:    { fontSize: 7, color: '#94A3B8', fontFamily: 'Helvetica' },
+  /* ── Overview table ── */
+  tblWrap:     { marginBottom: 20, borderRadius: 5, overflow: 'hidden',
+                 borderWidth: 1, borderColor: '#E2E8F0' },
+  tblHead:     { flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 12 },
+  tblHCell:    { fontSize: 6.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase',
+                 letterSpacing: 0.8 },
+  tblRow:      { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 12,
+                 alignItems: 'center', borderTopWidth: 0.5, borderTopColor: '#F1F5F9' },
+  tblPlatform: { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  tblPlatDot:  { width: 6, height: 6, borderRadius: 3 },
+  tblPlatName: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#0F172A' },
+  tblCell:     { flex: 1.5, alignItems: 'flex-end' },
+  tblVal:      { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#0F172A' },
+  tblSub:      { fontSize: 6, fontFamily: 'Helvetica', color: '#94A3B8', marginTop: 1 },
+  tblDPos:     { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#16A34A',
+                 flex: 1, textAlign: 'right' },
+  tblDNeg:     { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#DC2626',
+                 flex: 1, textAlign: 'right' },
+  tblDNA:      { fontSize: 8, fontFamily: 'Helvetica', color: '#94A3B8',
+                 flex: 1, textAlign: 'right' },
 
-  /* Section heading */
-  sectionWrap:      { marginTop: 20, marginBottom: 10 },
-  sectionRow:       { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 6 },
-  sectionDot:       { width: 8, height: 8, borderRadius: 4 },
-  sectionTitle:     { fontSize: 10, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase',
-                      letterSpacing: 0.5 },
-  sectionRule:      { height: 1 },
+  /* ── Narrative ── */
+  narrHdr:     { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+                 borderRadius: 6, marginBottom: 14, borderWidth: 1 },
+  narrBadge:   { width: 36, height: 36, borderRadius: 7,
+                 alignItems: 'center', justifyContent: 'center' },
+  narrBadgeTxt:{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  narrHdrTitle:{ fontSize: 11.5, fontFamily: 'Helvetica-Bold', color: '#0F172A' },
+  narrHdrSub:  { fontSize: 7.5, fontFamily: 'Helvetica', color: '#64748B', marginTop: 3 },
 
-  /* Platform overview table */
-  tableWrap:        { marginBottom: 18 },
-  tableHead:        { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 10,
-                      borderRadius: 4, marginBottom: 2 },
-  tableHeadCell:    { fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase',
-                      letterSpacing: 0.6 },
-  tableRow:         { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 10,
-                      borderBottomWidth: 0.5, borderBottomColor: '#F1F5F9', alignItems: 'center' },
-  tablePlatform:    { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#0F172A', flex: 2 },
-  tableMetric:      { fontSize: 8.5, fontFamily: 'Helvetica', color: '#334155',
-                      flex: 1.5, textAlign: 'right' },
-  tableMetricSub:   { fontSize: 6, fontFamily: 'Helvetica', color: '#94A3B8', textAlign: 'right' },
-  tableDeltaPos:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#16A34A',
-                      flex: 1, textAlign: 'right' },
-  tableDeltaNeg:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#DC2626',
-                      flex: 1, textAlign: 'right' },
-  tableDeltaNA:     { fontSize: 8, fontFamily: 'Helvetica', color: '#94A3B8',
-                      flex: 1, textAlign: 'right' },
+  narrBlock:   { marginBottom: 13 },
+  narrNumRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  narrNumBadge:{ width: 18, height: 18, borderRadius: 9,
+                 alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 0.5 },
+  narrNumTxt:  { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  narrContent: { flex: 1 },
+  narrTitle:   { fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 4, color: '#0F172A' },
+  narrBody:    { fontSize: 8.5, color: '#334155', fontFamily: 'Helvetica', lineHeight: 1.8 },
 
-  /* KPI card */
-  kpiRow:           { flexDirection: 'row', gap: KPI_GAP },
-  kpiCard:          { backgroundColor: '#F8FAFC', borderRadius: 6, borderLeftWidth: 3,
-                      paddingTop: 9, paddingBottom: 9, paddingRight: 9, paddingLeft: 10 },
-  kpiLabel:         { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: '#64748B',
-                      textTransform: 'uppercase', letterSpacing: 0.9, marginBottom: 4 },
-  kpiValue:         { fontSize: 17, fontFamily: 'Helvetica-Bold', color: '#0F172A',
-                      lineHeight: 1.1, marginBottom: 3 },
-  kpiDeltaPos:      { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#16A34A' },
-  kpiDeltaNeg:      { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#DC2626' },
-  kpiDeltaNA:       { fontSize: 7.5, fontFamily: 'Helvetica', color: '#94A3B8' },
+  narrRecCard: { borderRadius: 5, padding: 12, marginBottom: 7, borderWidth: 1 },
+  narrRecTitle:{ fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#0F172A', marginBottom: 4 },
+  narrRecBody: { fontSize: 8, color: '#475569', fontFamily: 'Helvetica', lineHeight: 1.7 },
 
-  /* AI narrative */
-  aiHeaderRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12,
-                      borderRadius: 6, marginBottom: 10, borderWidth: 1 },
-  aiBadge:          { width: 30, height: 30, borderRadius: 5,
-                      alignItems: 'center', justifyContent: 'center' },
-  aiBadgeText:      { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
-  aiTitle:          { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: '#0F172A' },
-  aiSub:            { fontSize: 8, fontFamily: 'Helvetica', color: '#64748B', marginTop: 2 },
-  narrBlock:        { marginBottom: 10, paddingLeft: 12, borderLeftWidth: 3 },
-  narrTitle:        { fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 5 },
-  narrBody:         { fontSize: 9, color: '#334155', fontFamily: 'Helvetica', lineHeight: 1.75 },
-
-  watermark:        { fontSize: 6.5, color: '#CBD5E1', textAlign: 'center',
-                      marginTop: 24, fontFamily: 'Helvetica' },
+  watermark:   { fontSize: 7, color: '#CBD5E1', textAlign: 'center',
+                 marginTop: 20, fontFamily: 'Helvetica', letterSpacing: 0.5 },
 });
 
-/* ═══════════════════════════════════════════════════
-   COVER BAND SVG
-═══════════════════════════════════════════════════ */
-function CoverSvg({ color }: { color: string }) {
+/* ═══════════════════════════════════════════════════════════════
+   COVER SVG BACKGROUND
+═══════════════════════════════════════════════════════════════ */
+function CoverBackground({ color }: { color: string }) {
+  const light = lighten(color, 0.9);
+  const mid   = lighten(color, 0.7);
   return React.createElement(Svg,
-    { viewBox: `0 0 ${A4_W} ${BAND_H}`, width: A4_W, height: BAND_H,
+    { width: PW, height: PH, viewBox: `0 0 ${PW} ${PH}`,
       style: { position: 'absolute', top: 0, left: 0 } },
-    React.createElement(Rect, { x: 0, y: 0, width: A4_W, height: BAND_H, fill: color }),
-    // Layered decorative circles
-    React.createElement(Circle, { cx: 530, cy: -20, r: 230, fill: 'white', fillOpacity: 0.055 }),
-    React.createElement(Circle, { cx: 555, cy: BAND_H + 30, r: 180, fill: 'white', fillOpacity: 0.04 }),
-    React.createElement(Circle, { cx: -30, cy: 230, r: 155, fill: 'white', fillOpacity: 0.04 }),
-    React.createElement(Circle, { cx: 300, cy: BAND_H + 10, r: 110, fill: 'white', fillOpacity: 0.03 }),
-    // Diagonal accent stripes
-    React.createElement(G, { opacity: 0.04 },
-      React.createElement(Rect, { x: 355, y: -60, width: 40, height: BAND_H + 120,
-        fill: 'white', transform: 'rotate(-17 355 0)' }),
-      React.createElement(Rect, { x: 450, y: -60, width: 22, height: BAND_H + 120,
-        fill: 'white', transform: 'rotate(-17 450 0)' }),
-    ),
-    // Bottom edge highlight
-    React.createElement(Rect, { x: 0, y: BAND_H - 3, width: A4_W, height: 3,
-      fill: 'white', fillOpacity: 0.15 }),
+
+    // White base
+    React.createElement(Rect, { x: 0, y: 0, width: PW, height: PH, fill: '#ffffff' }),
+
+    // Deep navy left panel
+    React.createElement(Rect, { x: 0, y: 0, width: 210, height: PH, fill: '#0F172A' }),
+
+    // Brand color accent stripe on left panel right edge
+    React.createElement(Rect, { x: 202, y: 0, width: 8, height: PH, fill: color }),
+
+    // Subtle geometric circles in left panel
+    React.createElement(Circle, { cx: 105, cy: 720, r: 200, fill: 'white', fillOpacity: 0.025 }),
+    React.createElement(Circle, { cx: 105, cy: 720, r: 140, fill: 'white', fillOpacity: 0.03 }),
+    React.createElement(Circle, { cx: 180, cy: 160, r: 120, fill: color, fillOpacity: 0.12 }),
+    React.createElement(Circle, { cx: 20, cy: 400, r: 80, fill: 'white', fillOpacity: 0.03 }),
+
+    // Top-right corner geometric accent on white side
+    React.createElement(Circle, { cx: PW, cy: 0, r: 180, fill: light }),
+    React.createElement(Circle, { cx: PW - 30, cy: 30, r: 90, fill: mid }),
+    React.createElement(Circle, { cx: PW, cy: 0, r: 60, fill: withOpacity(color, 0.15) }),
+
+    // Bottom-right subtle arc
+    React.createElement(Circle, { cx: PW, cy: PH, r: 120, fill: light }),
+
+    // Horizontal rule across white section at 60% down
+    React.createElement(Rect, { x: 210, y: 530, width: PW - 210, height: 0.5,
+      fill: '#E2E8F0' }),
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   PLATFORM PILL  (cover page connected sources)
-═══════════════════════════════════════════════════ */
-function PlatformPill({ name, color }: { name: string; color: string }) {
-  return React.createElement(View,
-    { style: [S.coverPlatformPill, { borderColor: color + '35', backgroundColor: color + '07' }] },
-    React.createElement(View, { style: { flexDirection: 'row', alignItems: 'center', gap: 5 } },
-      React.createElement(View, { style: [S.coverPillDot, { backgroundColor: color }] }),
-      React.createElement(Text, { style: S.coverPillName }, name),
+/* ═══════════════════════════════════════════════════════════════
+   RUNNING HEADER & FOOTER
+═══════════════════════════════════════════════════════════════ */
+function RunningHeader({ agencyName, clientName, dateRange, color }: {
+  agencyName: string; clientName: string; dateRange: string; color: string;
+}) {
+  return React.createElement(View, { style: S.rHdr, fixed: true },
+    React.createElement(View, { style: [S.rHdrBar, { backgroundColor: color }] }),
+    React.createElement(View, { style: S.rHdrRow },
+      React.createElement(Text, { style: S.rHdrL }, agencyName),
+      React.createElement(Text, { style: S.rHdrR }, `${clientName}  ·  ${dateRange}`),
     ),
-    React.createElement(Text, { style: S.coverPillStatus }, '✓  Connected'),
   );
 }
 
-/* ═══════════════════════════════════════════════════
+function RunningFooter({ agencyName, genDate }: { agencyName: string; genDate: string }) {
+  return React.createElement(View, { style: S.rFtr, fixed: true },
+    React.createElement(View, { style: S.rFtrLine }),
+    React.createElement(View, { style: S.rFtrRow },
+      React.createElement(Text, { style: S.rFtrTxt }, `${agencyName}  ·  Strictly Confidential`),
+      React.createElement(Text, { style: S.rFtrTxt }, `Generated ${genDate}`),
+      React.createElement(Text, {
+        style: S.rFtrTxt,
+        render: ({ pageNumber, totalPages }: any) =>
+          `Page ${pageNumber - 1} of ${totalPages - 1}`,
+      }),
+    ),
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    SECTION HEADING
-═══════════════════════════════════════════════════ */
-function SectionHeading({ title, color }: { title: string; color: string }) {
-  return React.createElement(View, { style: S.sectionWrap },
-    React.createElement(View, { style: S.sectionRow },
-      React.createElement(View, { style: [S.sectionDot, { backgroundColor: color }] }),
-      React.createElement(Text, { style: [S.sectionTitle, { color }] }, title),
+═══════════════════════════════════════════════════════════════ */
+function SectionHeading({ num, title, color }: { num: string; title: string; color: string }) {
+  return React.createElement(View, { style: S.secWrap },
+    React.createElement(View, { style: S.secRow },
+      React.createElement(Text, { style: [S.secNum, { color }] }, num),
+      React.createElement(View, { style: { width: 3, height: 12, backgroundColor: color, borderRadius: 2 } }),
+      React.createElement(Text, { style: S.secTitle }, title),
     ),
-    React.createElement(View, { style: [S.sectionRule, { backgroundColor: color + '28' }] }),
+    React.createElement(View, { style: [S.secRule, { backgroundColor: withOpacity(color, 0.2) }] }),
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   KPI CARD
-═══════════════════════════════════════════════════ */
-interface KpiProps {
-  label: string; value: string; delta: Delta;
-  invertGood?: boolean; color: string; width: number;
+/* ═══════════════════════════════════════════════════════════════
+   MINI TREND BAR (SVG sparkline bar)
+═══════════════════════════════════════════════════════════════ */
+function TrendBar({ pct, isPos, isNA, color, error }: {
+  pct: number; isPos: boolean; isNA: boolean; color: string; error: string;
+}) {
+  const W = 44, H = 4, R = 2;
+  const clampedAbs = Math.min(Math.abs(pct), 100);
+  const barW = Math.max(3, (clampedAbs / 100) * W);
+  const barColor = isNA ? '#CBD5E1' : isPos ? '#16A34A' : error;
+  return React.createElement(Svg,
+    { width: W, height: H, viewBox: `0 0 ${W} ${H}` },
+    // Track
+    React.createElement(Rect, { x: 0, y: 0, width: W, height: H, rx: R, fill: '#E2E8F0' }),
+    // Fill
+    React.createElement(Rect, { x: 0, y: 0, width: barW, height: H, rx: R, fill: barColor }),
+  );
 }
-function KpiCard({ label, value, delta, invertGood, color, width }: KpiProps) {
-  const good   = invertGood ? !delta.isPos : delta.isPos;
-  const dStyle = delta.isNA ? S.kpiDeltaNA : (good ? S.kpiDeltaPos : S.kpiDeltaNeg);
-  const arrow  = delta.isNA ? '' : (delta.isPos ? '↑ ' : '↓ ');
-  const dText  = delta.isNA ? 'N/A' : arrow + delta.label.replace(/^[+-]/, '');
-  return React.createElement(View, { style: [S.kpiCard, { borderLeftColor: color, width }] },
-    React.createElement(Text, { style: S.kpiLabel }, label),
-    React.createElement(Text, { style: S.kpiValue }, value),
+
+/* ═══════════════════════════════════════════════════════════════
+   KPI CARD
+═══════════════════════════════════════════════════════════════ */
+interface KpiProps {
+  label: string;
+  value: string;
+  delta: Delta;
+  invertGood?: boolean;
+  color: string;
+  errorColor: string;
+  width: number;
+}
+function KpiCard({ label, value, delta, invertGood, color, errorColor, width }: KpiProps) {
+  const good    = invertGood ? !delta.isPos : delta.isPos;
+  const dStyle  = delta.isNA ? S.kpiDeltaNA : (good ? S.kpiDeltaPos : S.kpiDeltaNeg);
+  const arrow   = delta.isNA ? '' : (delta.isPos ? '▲ ' : '▼ ');
+  const dText   = delta.isNA ? 'No prior data' : arrow + delta.label.replace(/^[+-]/, '') + ' vs prior';
+  const barColor = delta.isNA ? '#CBD5E1' : (good ? '#16A34A' : errorColor);
+
+  return React.createElement(View, {
+    style: [S.kpiCard, { borderTopColor: color, width }],
+  },
+    React.createElement(Text, { style: S.kpiLbl }, label),
+    React.createElement(Text, { style: S.kpiVal }, value),
+    // Trend bar
+    React.createElement(Svg, { width: 50, height: 4, viewBox: '0 0 50 4' },
+      React.createElement(Rect, { x: 0, y: 0, width: 50, height: 4, rx: 2, fill: '#E2E8F0' }),
+      React.createElement(Rect, {
+        x: 0, y: 0,
+        width: Math.max(3, Math.min(50, (Math.abs(delta.pct) / 60) * 50)),
+        height: 4, rx: 2, fill: barColor,
+      }),
+    ),
     React.createElement(Text, { style: dStyle }, dText),
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   KPI GRID  — fixed-width cards, no filler views
-═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   KPI GRID
+═══════════════════════════════════════════════════════════════ */
 interface KpiMetric { label: string; value: string; delta: Delta; invertGood?: boolean }
-function KpiGrid({ metrics, color, perRow = 4 }: {
-  metrics: KpiMetric[]; color: string; perRow?: number;
+function KpiGrid({ metrics, color, errorColor, perRow = 4 }: {
+  metrics: KpiMetric[]; color: string; errorColor: string; perRow?: number;
 }) {
-  // Compute card width to be consistent regardless of row length
-  const cardW = (CONTENT_W - (perRow - 1) * KPI_GAP) / perRow;
+  const GAP = 7;
+  const cardW = (CW - (perRow - 1) * GAP) / perRow;
   const rows: KpiMetric[][] = [];
   for (let i = 0; i < metrics.length; i += perRow) rows.push(metrics.slice(i, i + perRow));
 
-  return React.createElement(View, { style: { marginBottom: 16 } },
+  return React.createElement(View, { style: { marginBottom: 6 } },
     ...rows.map((row, ri) =>
       React.createElement(View, {
         key: ri,
-        style: [S.kpiRow, { marginBottom: ri < rows.length - 1 ? KPI_GAP : 0 }],
+        style: [S.kpiGrid, { marginBottom: ri < rows.length - 1 ? 0 : 6 }],
       },
         ...row.map(m =>
-          React.createElement(KpiCard, { key: m.label, ...m, color, width: cardW })
+          React.createElement(KpiCard, { key: m.label, ...m, color, errorColor, width: cardW })
         ),
       )
     ),
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   PLATFORM OVERVIEW TABLE
-═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   OVERVIEW TABLE
+═══════════════════════════════════════════════════════════════ */
+type OvRow = {
+  platform: string; dotColor: string;
+  primary: string; primaryLbl: string;
+  secondary: string; secondaryLbl: string;
+  d: Delta; invertGood?: boolean;
+};
+
 function OverviewTable({ rawData, color }: { rawData: any; color: string }) {
-  type Row = { platform: string; primary: string; primaryLbl: string;
-               secondary: string; secondaryLbl: string; d: Delta };
-  const rows: Row[] = [];
+  const rows: OvRow[] = [];
   if (rawData?.ga4) rows.push({
-    platform: 'Google Analytics 4',
-    primary: fmt(rawData.ga4.sessions), primaryLbl: 'Sessions',
-    secondary: fmt(rawData.ga4.users),  secondaryLbl: 'Users',
+    platform: 'Google Analytics 4', dotColor: '#4285F4',
+    primary: fmt(rawData.ga4.sessions),       primaryLbl: 'Sessions',
+    secondary: `${fmt(rawData.ga4.conversionRate * 100, 2)}%`, secondaryLbl: 'Conv. Rate',
     d: calcDelta(rawData.ga4.sessions, rawData.ga4.sessionsPrev),
   });
   if (rawData?.googleAds) rows.push({
-    platform: 'Google Ads',
-    primary: `$${fmt(rawData.googleAds.spend, 0)}`, primaryLbl: 'Spend',
+    platform: 'Google Ads', dotColor: '#FBBC05',
+    primary: `$${fmt(rawData.googleAds.spend, 0)}`, primaryLbl: 'Total Spend',
     secondary: `${fmt(rawData.googleAds.roas, 2)}x`, secondaryLbl: 'ROAS',
     d: calcDelta(rawData.googleAds.roas, rawData.googleAds.roasPrev),
   });
   if (rawData?.meta) rows.push({
-    platform: 'Meta Ads',
-    primary: `$${fmt(rawData.meta.spend, 0)}`, primaryLbl: 'Spend',
-    secondary: `${fmt(rawData.meta.roas, 2)}x`, secondaryLbl: 'ROAS',
+    platform: 'Meta Ads', dotColor: '#0866FF',
+    primary: `$${fmt(rawData.meta.spend, 0)}`,    primaryLbl: 'Total Spend',
+    secondary: `${fmt(rawData.meta.roas, 2)}x`,   secondaryLbl: 'ROAS',
     d: calcDelta(rawData.meta.roas, rawData.meta.roasPrev),
+  });
+  if (rawData?.linkedin) rows.push({
+    platform: 'LinkedIn Ads', dotColor: '#0A66C2',
+    primary: `$${fmt(rawData.linkedin.spend, 0)}`,         primaryLbl: 'Total Spend',
+    secondary: fmt(rawData.linkedin.conversions),          secondaryLbl: 'Conversions',
+    d: calcDelta(rawData.linkedin.clicks, rawData.linkedin.clicksPrev),
   });
   if (!rows.length) return null;
 
-  return React.createElement(View, { style: S.tableWrap },
-    React.createElement(View, { style: [S.tableHead, { backgroundColor: color + '12' }] },
-      React.createElement(Text, { style: [S.tableHeadCell, { flex: 2, color }] }, 'Platform'),
-      React.createElement(Text, { style: [S.tableHeadCell, { flex: 1.5, textAlign: 'right', color }] }, 'Primary'),
-      React.createElement(Text, { style: [S.tableHeadCell, { flex: 1.5, textAlign: 'right', color }] }, 'Secondary'),
-      React.createElement(Text, { style: [S.tableHeadCell, { flex: 1, textAlign: 'right', color }] }, 'vs Prev'),
+  return React.createElement(View, { style: S.tblWrap },
+    // Header
+    React.createElement(View, { style: [S.tblHead, { backgroundColor: withOpacity(color, 0.08) }] },
+      React.createElement(Text, { style: [S.tblHCell, { flex: 2, color }] }, 'Data Source'),
+      React.createElement(Text, { style: [S.tblHCell, { flex: 1.5, textAlign: 'right', color }] }, 'Primary KPI'),
+      React.createElement(Text, { style: [S.tblHCell, { flex: 1.5, textAlign: 'right', color }] }, 'Secondary KPI'),
+      React.createElement(Text, { style: [S.tblHCell, { flex: 1, textAlign: 'right', color }] }, 'Period Δ'),
     ),
     ...rows.map((r, i) => {
-      const dStyle = r.d.isNA ? S.tableDeltaNA : (r.d.isPos ? S.tableDeltaPos : S.tableDeltaNeg);
-      const dText  = r.d.isNA ? 'N/A' : (r.d.isPos ? '↑ ' : '↓ ') + r.d.label.replace(/^[+-]/, '');
+      const dStyle = r.d.isNA ? S.tblDNA : (r.d.isPos ? S.tblDPos : S.tblDNeg);
+      const arrow  = r.d.isNA ? '' : (r.d.isPos ? '▲ ' : '▼ ');
+      const dText  = r.d.isNA ? '—' : arrow + r.d.label.replace(/^[+-]/, '');
       return React.createElement(View, {
         key: i,
-        style: [S.tableRow, { backgroundColor: i % 2 === 0 ? '#FAFAFA' : '#ffffff' }],
+        style: [S.tblRow, { backgroundColor: i % 2 === 0 ? '#ffffff' : '#FAFAFA' }],
       },
-        React.createElement(Text, { style: S.tablePlatform }, r.platform),
-        React.createElement(View, { style: { flex: 1.5, alignItems: 'flex-end' } },
-          React.createElement(Text, { style: S.tableMetric }, r.primary),
-          React.createElement(Text, { style: S.tableMetricSub }, r.primaryLbl),
+        React.createElement(View, { style: S.tblPlatform },
+          React.createElement(View, { style: [S.tblPlatDot, { backgroundColor: r.dotColor }] }),
+          React.createElement(Text, { style: S.tblPlatName }, r.platform),
         ),
-        React.createElement(View, { style: { flex: 1.5, alignItems: 'flex-end' } },
-          React.createElement(Text, { style: S.tableMetric }, r.secondary),
-          React.createElement(Text, { style: S.tableMetricSub }, r.secondaryLbl),
+        React.createElement(View, { style: S.tblCell },
+          React.createElement(Text, { style: S.tblVal }, r.primary),
+          React.createElement(Text, { style: S.tblSub }, r.primaryLbl),
+        ),
+        React.createElement(View, { style: S.tblCell },
+          React.createElement(Text, { style: S.tblVal }, r.secondary),
+          React.createElement(Text, { style: S.tblSub }, r.secondaryLbl),
         ),
         React.createElement(Text, { style: dStyle }, dText),
       );
@@ -309,185 +429,338 @@ function OverviewTable({ rawData, color }: { rawData: any; color: string }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   NARRATIVE BLOCK
-═══════════════════════════════════════════════════ */
-function NarrBlock({ title, body, color }: { title: string; body: string; color: string }) {
-  const clean = title.replace(/^[\p{Emoji}\s]+/u, '').trim();
-  return React.createElement(View, { style: [S.narrBlock, { borderLeftColor: color + 'aa' }] },
-    React.createElement(Text, { style: [S.narrTitle, { color }] }, clean),
-    React.createElement(Text, { style: S.narrBody }, body),
+/* ═══════════════════════════════════════════════════════════════
+   NARRATIVE BLOCK (numbered section)
+═══════════════════════════════════════════════════════════════ */
+function NarrBlock({ num, title, body, color, isRec }: {
+  num: number; title: string; body: string; color: string; isRec?: boolean;
+}) {
+  if (isRec) {
+    // Recommendations get a card-style treatment
+    return React.createElement(View, {
+      style: [S.narrRecCard, {
+        backgroundColor: withOpacity(color, 0.05),
+        borderColor: withOpacity(color, 0.25),
+      }],
+    },
+      React.createElement(View, { style: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 5 } },
+        React.createElement(View, {
+          style: [S.narrNumBadge, { backgroundColor: color, width: 20, height: 20, borderRadius: 10 }],
+        },
+          React.createElement(Text, { style: S.narrNumTxt }, String(num)),
+        ),
+        React.createElement(Text, { style: [S.narrRecTitle, { color }] }, title),
+      ),
+      React.createElement(Text, { style: S.narrRecBody }, body),
+    );
+  }
+
+  return React.createElement(View, { style: S.narrBlock },
+    React.createElement(View, { style: S.narrNumRow },
+      React.createElement(View, { style: [S.narrNumBadge, { backgroundColor: color }] },
+        React.createElement(Text, { style: S.narrNumTxt }, String(num)),
+      ),
+      React.createElement(View, { style: S.narrContent },
+        React.createElement(Text, { style: S.narrTitle }, title),
+        React.createElement(Text, { style: S.narrBody }, body),
+      ),
+    ),
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   MAIN EXPORT
-═══════════════════════════════════════════════════ */
-export async function generatePDF(report: any, agency: any, client: any): Promise<Buffer> {
-  const rawData   = report.rawData   as any;
-  const narrative = report.narrative as any;
-  const color     = agency?.brandColor || '#6366F1';
-  const isAgency  = ['AGENCY', 'AGENCY_PRO'].includes(agency?.subscriptionTier);
+/* ═══════════════════════════════════════════════════════════════
+   COVER STAT BOX
+═══════════════════════════════════════════════════════════════ */
+function CoverStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return React.createElement(View, {
+    style: { flexDirection: 'column', paddingRight: 20 },
+  },
+    React.createElement(Text, {
+      style: { fontSize: 18, fontFamily: 'Helvetica-Bold', color, lineHeight: 1 },
+    }, value),
+    React.createElement(Text, {
+      style: { fontSize: 7, fontFamily: 'Helvetica', color: '#64748B',
+        textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 3 },
+    }, label),
+  );
+}
 
-  const agencyName = agency?.name || 'ReportCraft AI';
+/* ═══════════════════════════════════════════════════════════════
+   MAIN EXPORT
+═══════════════════════════════════════════════════════════════ */
+export async function generatePDF(report: any, agency: any, client: any): Promise<Buffer> {
+  const rawData    = report.rawData   as any;
+  const narrative  = report.narrative as any;
+  const brandColor = agency?.brandColor || '#6366F1';
+  const T          = makeTokens(brandColor);
+  const isAgency   = ['AGENCY', 'AGENCY_PRO'].includes(agency?.subscriptionTier);
+
+  const agencyName = agency?.name  || 'ReportCraft AI';
   const clientName = client?.name  || 'Client';
   const startDate  = fmtDate(report.dateRangeStart);
   const endDate    = fmtDate(report.dateRangeEnd);
-  const dateRange  = `${startDate} – ${endDate}`;
+  const shortStart = fmtDateShort(report.dateRangeStart);
+  const shortEnd   = fmtDateShort(report.dateRangeEnd);
+  const dateRange  = `${shortStart} – ${shortEnd}`;
   const genDate    = fmtDate(new Date());
   const tone       = report.narrativeTone
     ? report.narrativeTone.charAt(0).toUpperCase() + report.narrativeTone.slice(1)
     : 'Professional';
 
-  /* ── connected platform pills ── */
-  const platformPills: React.ReactElement[] = [];
-  if (rawData?.ga4)        platformPills.push(React.createElement(PlatformPill, { key: 'ga4',  name: 'Google Analytics 4', color }));
-  if (rawData?.googleAds)  platformPills.push(React.createElement(PlatformPill, { key: 'gads', name: 'Google Ads',         color }));
-  if (rawData?.meta)       platformPills.push(React.createElement(PlatformPill, { key: 'meta', name: 'Meta Ads',           color }));
+  // Collect active platforms
+  const platforms: string[] = [];
+  if (rawData?.ga4)       platforms.push('Google Analytics 4');
+  if (rawData?.googleAds) platforms.push('Google Ads');
+  if (rawData?.meta)      platforms.push('Meta Ads');
+  if (rawData?.linkedin)  platforms.push('LinkedIn Ads');
 
-  /* ══════════════════════════════════════════
-     PAGE 1  —  COVER
-  ══════════════════════════════════════════ */
+  // Quick cover stats
+  const totalSpend = (rawData?.googleAds?.spend || 0) + (rawData?.meta?.spend || 0) + (rawData?.linkedin?.spend || 0);
+  const totalConversions = (rawData?.googleAds?.conversions || 0) + (rawData?.linkedin?.conversions || 0);
+  const avgRoas = rawData?.googleAds?.roas || rawData?.meta?.roas || null;
+
+  /* ══════════════════════════════════════
+     PAGE 1 — COVER
+  ══════════════════════════════════════ */
   const coverPage = React.createElement(Page, { key: 'cover', size: 'A4', style: S.coverPage },
 
-    /* Coloured band */
-    React.createElement(View, { style: S.coverBand },
-      React.createElement(CoverSvg, { color }),
-      React.createElement(View, { style: S.coverBandInner },
-        /* Agency mark — top of band */
-        React.createElement(View, {},
-          agency?.logoUrl
-            ? React.createElement(Image, { src: agency.logoUrl, style: S.coverLogo })
-            : React.createElement(Text, { style: S.coverAgencyName }, agencyName),
+    // Background
+    React.createElement(CoverBackground, { color: brandColor }),
+
+    // LEFT PANEL CONTENT
+    React.createElement(View, {
+      style: { position: 'absolute', top: 0, left: 0, width: 202, height: PH,
+        padding: 36, flexDirection: 'column', justifyContent: 'space-between' },
+    },
+      // Agency identity at top
+      React.createElement(View, {},
+        agency?.logoUrl
+          ? React.createElement(Image, {
+              src: agency.logoUrl,
+              style: { height: 28, maxWidth: 130, objectFit: 'contain', marginBottom: 12 },
+            })
+          : React.createElement(View, {
+              style: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+            },
+              React.createElement(View, {
+                style: { width: 8, height: 8, borderRadius: 4, backgroundColor: brandColor },
+              }),
+              React.createElement(Text, {
+                style: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#ffffff', letterSpacing: 0.3 },
+              }, agencyName),
+            ),
+
+        // Divider
+        React.createElement(View, { style: { height: 0.5, backgroundColor: 'rgba(255,255,255,0.15)', marginBottom: 28 } }),
+
+        // "PERFORMANCE REPORT" label
+        React.createElement(Text, {
+          style: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: brandColor,
+            textTransform: 'uppercase', letterSpacing: 2.5, marginBottom: 14 },
+        }, 'Performance Report'),
+
+        // Client name (large)
+        React.createElement(Text, {
+          style: { fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#ffffff',
+            lineHeight: 1.15, marginBottom: 10 },
+        }, clientName),
+
+        // Report period
+        React.createElement(Text, {
+          style: { fontSize: 9, fontFamily: 'Helvetica', color: 'rgba(255,255,255,0.55)',
+            lineHeight: 1.5 },
+        }, `${startDate}\n– ${endDate}`),
+      ),
+
+      // Bottom of left panel — navigation / TOC
+      React.createElement(View, {},
+        React.createElement(View, { style: { height: 0.5, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 16 } }),
+        React.createElement(Text, {
+          style: { fontSize: 5.5, fontFamily: 'Helvetica-Bold', color: 'rgba(255,255,255,0.35)',
+            textTransform: 'uppercase', letterSpacing: 2, marginBottom: 10 },
+        }, 'Contents'),
+        ...[
+          'Platform Overview',
+          ...(rawData?.ga4       ? ['Google Analytics 4'] : []),
+          ...(rawData?.googleAds ? ['Google Ads']         : []),
+          ...(rawData?.meta      ? ['Meta Ads']           : []),
+          ...(rawData?.linkedin  ? ['LinkedIn Ads']       : []),
+          ...(narrative          ? ['AI Insight Analysis'] : []),
+        ].map((item, i) =>
+          React.createElement(View, {
+            key: i,
+            style: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 7 },
+          },
+            React.createElement(View, {
+              style: { width: 4, height: 4, borderRadius: 2, backgroundColor: brandColor },
+            }),
+            React.createElement(Text, {
+              style: { fontSize: 7.5, fontFamily: 'Helvetica', color: 'rgba(255,255,255,0.65)' },
+            }, item),
+          )
         ),
-        /* Client identity — bottom of band */
-        React.createElement(View, {},
-          React.createElement(Text, { style: S.coverLabel }, 'Performance Report'),
-          React.createElement(Text, { style: S.coverClient }, clientName),
-          React.createElement(Text, { style: S.coverDate }, dateRange),
-        ),
+        React.createElement(View, { style: { height: 0.5, backgroundColor: 'rgba(255,255,255,0.1)', marginTop: 10, marginBottom: 10 } }),
+        React.createElement(Text, {
+          style: { fontSize: 6, fontFamily: 'Helvetica', color: 'rgba(255,255,255,0.3)' },
+        }, 'Strictly Confidential'),
       ),
     ),
 
-    /* White metadata section */
-    React.createElement(View, { style: S.coverMeta },
+    // RIGHT PANEL CONTENT (white area, x starts at 210 + 8 accent = 218)
+    React.createElement(View, {
+      style: { position: 'absolute', top: 0, left: 230, right: 0, height: PH,
+        paddingTop: 52, paddingRight: 44, paddingBottom: 44, flexDirection: 'column',
+        justifyContent: 'space-between' },
+    },
+      // Top section
+      React.createElement(View, {},
+        // Eyebrow
+        React.createElement(Text, {
+          style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: brandColor,
+            textTransform: 'uppercase', letterSpacing: 2.5, marginBottom: 18 },
+        }, 'AI-Powered Report'),
 
-      /* Thin brand divider */
-      React.createElement(View, { style: [S.coverDivider, { backgroundColor: color }] }),
+        // Big heading area
+        React.createElement(Text, {
+          style: { fontSize: 28, fontFamily: 'Helvetica-Bold', color: '#0F172A',
+            lineHeight: 1.12, marginBottom: 8, letterSpacing: -0.3 },
+        }, 'Digital\nPerformance\nAnalysis'),
 
-      /* "REPORT DETAILS" heading */
-      React.createElement(Text, { style: [S.coverSectionLbl, { color: color }] }, 'Report Details'),
+        React.createElement(View, { style: { height: 3, width: 40, backgroundColor: brandColor, borderRadius: 2, marginBottom: 18, marginTop: 4 } }),
 
-      /* Metadata rows */
-      React.createElement(View, { style: { marginBottom: 4 } },
-        React.createElement(View, { style: S.coverMetaRow },
-          React.createElement(Text, { style: S.coverMetaKey }, 'Prepared by'),
-          React.createElement(Text, { style: S.coverMetaVal }, agencyName),
-        ),
-        React.createElement(View, { style: S.coverMetaRow },
-          React.createElement(Text, { style: S.coverMetaKey }, 'Report period'),
-          React.createElement(Text, { style: S.coverMetaVal }, dateRange),
-        ),
-        React.createElement(View, { style: S.coverMetaRow },
-          React.createElement(Text, { style: S.coverMetaKey }, 'Generated on'),
-          React.createElement(Text, { style: S.coverMetaVal }, genDate),
-        ),
-        React.createElement(View, { style: S.coverMetaRow },
-          React.createElement(Text, { style: S.coverMetaKey }, 'Narrative tone'),
-          React.createElement(Text, { style: S.coverMetaVal }, tone),
-        ),
-        narrative?.wordCount && React.createElement(View, { style: S.coverMetaRow },
-          React.createElement(Text, { style: S.coverMetaKey }, 'AI analysis'),
-          React.createElement(Text, { style: S.coverMetaVal }, `${narrative.wordCount} words`),
-        ),
+        React.createElement(Text, {
+          style: { fontSize: 8.5, fontFamily: 'Helvetica', color: '#64748B',
+            lineHeight: 1.65, maxWidth: 280 },
+        }, `A comprehensive cross-channel performance analysis combining ${platforms.length > 0 ? platforms.join(', ') : 'connected platforms'} — powered by AI-driven insights and strategic recommendations.`),
       ),
 
-      /* "DATA SOURCES" + platform pills */
-      platformPills.length > 0 && React.createElement(View, {},
-        React.createElement(Text, { style: [S.coverSectionLbl, { color, marginTop: 16 }] }, 'Data Sources'),
-        React.createElement(View, { style: S.coverPlatformRow },
-          ...platformPills,
+      // Stats row (middle section of white area)
+      React.createElement(View, {},
+        React.createElement(View, { style: { height: 0.5, backgroundColor: '#E2E8F0', marginBottom: 22 } }),
+        React.createElement(View, { style: { flexDirection: 'row', marginBottom: 22 } },
+          totalSpend > 0 && React.createElement(CoverStat, {
+            label: 'Total Ad Spend',
+            value: `$${fmt(totalSpend, 0)}`,
+            color: brandColor,
+          }),
+          totalConversions > 0 && React.createElement(CoverStat, {
+            label: 'Total Conversions',
+            value: fmt(totalConversions),
+            color: brandColor,
+          }),
+          avgRoas && React.createElement(CoverStat, {
+            label: 'Best ROAS',
+            value: `${fmt(avgRoas, 2)}x`,
+            color: brandColor,
+          }),
+          platforms.length > 0 && React.createElement(CoverStat, {
+            label: 'Data Sources',
+            value: String(platforms.length),
+            color: brandColor,
+          }),
         ),
+        React.createElement(View, { style: { height: 0.5, backgroundColor: '#E2E8F0', marginBottom: 22 } }),
       ),
 
-      /* Spacer */
-      React.createElement(View, { style: S.coverSpacer }),
-
-      /* Confidential tags */
-      React.createElement(View, { style: S.coverTagRow },
-        React.createElement(View, { style: [S.coverTag, { borderColor: color + '50', backgroundColor: color + '10' }] },
-          React.createElement(Text, { style: [S.coverTagText, { color }] }, 'Confidential'),
+      // Metadata + tags at bottom
+      React.createElement(View, {},
+        // Meta grid
+        React.createElement(View, { style: { flexDirection: 'row', gap: 0 } },
+          [
+            { k: 'Prepared by', v: agencyName },
+            { k: 'Report Period', v: dateRange },
+            { k: 'Generated', v: genDate },
+            { k: 'AI Tone', v: tone },
+          ].map(({ k, v }, i) =>
+            React.createElement(View, {
+              key: i,
+              style: { flex: 1, paddingRight: 10, borderRightWidth: i < 3 ? 0.5 : 0,
+                borderRightColor: '#E2E8F0', paddingLeft: i > 0 ? 10 : 0, marginBottom: 16 },
+            },
+              React.createElement(Text, {
+                style: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: '#94A3B8',
+                  textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+              }, k),
+              React.createElement(Text, {
+                style: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#334155' },
+              }, v),
+            )
+          ),
         ),
-        React.createElement(View, { style: [S.coverTag, { borderColor: '#E2E8F0' }] },
-          React.createElement(Text, { style: [S.coverTagText, { color: '#64748B' }] }, 'AI-Generated Insights'),
+
+        // Tags
+        React.createElement(View, { style: { flexDirection: 'row', gap: 6 } },
+          React.createElement(View, {
+            style: { paddingHorizontal: 10, paddingVertical: 5,
+              backgroundColor: withOpacity(brandColor, 0.1),
+              borderWidth: 1, borderColor: withOpacity(brandColor, 0.3),
+              borderRadius: 4 },
+          },
+            React.createElement(Text, {
+              style: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: brandColor,
+                textTransform: 'uppercase', letterSpacing: 1.2 },
+            }, 'Confidential'),
+          ),
+          React.createElement(View, {
+            style: { paddingHorizontal: 10, paddingVertical: 5,
+              borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4 },
+          },
+            React.createElement(Text, {
+              style: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: '#64748B',
+                textTransform: 'uppercase', letterSpacing: 1.2 },
+            }, 'AI-Powered Analysis'),
+          ),
         ),
       ),
     ),
-
-    /* Thin bottom accent bar */
-    React.createElement(View, { style: [S.coverBottomBar, { backgroundColor: color }] }),
   );
 
-  /* ══════════════════════════════════════════
-     PAGE 2+  —  CONTENT
-     Layout: header (fixed) | body | footer (fixed)
-     Using fixed: true in normal page flow to avoid
-     the absolute-positioning "ghost text" bug.
-  ══════════════════════════════════════════ */
+  /* ══════════════════════════════════════
+     PAGE 2+ — CONTENT
+  ══════════════════════════════════════ */
+  const header = React.createElement(RunningHeader, { agencyName, clientName, dateRange, color: brandColor });
+  const footer = React.createElement(RunningFooter, { agencyName, genDate });
 
-  /* Running header (fixed — repeats on every physical page) */
-  const runningHeader = React.createElement(View, { style: S.runHeader, fixed: true },
-    React.createElement(View, { style: [S.runHeaderBar, { backgroundColor: color }] }),
-    React.createElement(View, { style: S.runHeaderRow },
-      React.createElement(Text, { style: S.runHeaderLeft }, agencyName),
-      React.createElement(Text, { style: S.runHeaderRight },
-        `${clientName}  ·  ${dateRange}`,
-      ),
-    ),
-  );
-
-  /* Running footer (fixed — repeats on every physical page) */
-  const runningFooter = React.createElement(View, { style: S.runFooter, fixed: true },
-    React.createElement(View, { style: S.runFooterLine }),
-    React.createElement(View, { style: S.runFooterRow },
-      React.createElement(Text, { style: S.runFooterText }, `${agencyName}  ·  Confidential`),
-      React.createElement(Text, { style: S.runFooterText }, genDate),
-      React.createElement(Text, {
-        style: S.runFooterText,
-        render: ({ pageNumber, totalPages }: any) =>
-          `Page ${pageNumber - 1} of ${totalPages - 1}`,
-      }),
-    ),
-  );
+  // Section counter
+  let secNum = 0;
+  const nextSec = () => { secNum++; return String(secNum).padStart(2, '0'); };
 
   const contentPage = React.createElement(Page, { key: 'content', size: 'A4', style: S.contentPage },
-    runningHeader,
+    header,
 
-    React.createElement(View, { style: S.contentBody },
+    React.createElement(View, { style: { flex: 1, paddingBottom: 56 } },
 
-      /* ── Platform Overview ── */
-      (rawData?.ga4 || rawData?.googleAds || rawData?.meta) && React.createElement(View, {},
-        React.createElement(SectionHeading, { title: 'Platform Overview', color }),
-        React.createElement(OverviewTable, { rawData, color }),
-      ),
+      /* ── 01 Platform Overview ── */
+      (rawData?.ga4 || rawData?.googleAds || rawData?.meta || rawData?.linkedin) &&
+        React.createElement(View, {},
+          React.createElement(SectionHeading, { num: nextSec(), title: 'Platform Overview', color: brandColor }),
+          React.createElement(OverviewTable, { rawData, color: brandColor }),
+        ),
 
       /* ── GA4 ── */
       rawData?.ga4 && React.createElement(View, {},
-        React.createElement(SectionHeading, { title: 'Google Analytics 4', color }),
+        React.createElement(SectionHeading, { num: nextSec(), title: 'Google Analytics 4  —  Website Performance', color: brandColor }),
         React.createElement(KpiGrid, {
-          color, perRow: 3,
+          color: brandColor, errorColor: T.error, perRow: 3,
           metrics: [
-            { label: 'Sessions',      value: fmt(rawData.ga4.sessions),
+            { label: 'Sessions',
+              value: fmt(rawData.ga4.sessions),
               delta: calcDelta(rawData.ga4.sessions, rawData.ga4.sessionsPrev) },
-            { label: 'Users',         value: fmt(rawData.ga4.users),
+            { label: 'Unique Users',
+              value: fmt(rawData.ga4.users),
               delta: calcDelta(rawData.ga4.users, rawData.ga4.usersPrev) },
-            { label: 'Pageviews',     value: fmt(rawData.ga4.pageviews),
+            { label: 'Pageviews',
+              value: fmt(rawData.ga4.pageviews),
               delta: calcDelta(rawData.ga4.pageviews, rawData.ga4.pageviewsPrev) },
-            { label: 'Bounce Rate',   value: `${fmt(rawData.ga4.bounceRate * 100, 1)}%`,
-              delta: calcDelta(rawData.ga4.bounceRate, rawData.ga4.bounceRatePrev), invertGood: true },
-            { label: 'Conv. Rate',    value: `${fmt(rawData.ga4.conversionRate * 100, 2)}%`,
+            { label: 'Bounce Rate',
+              value: `${fmt(rawData.ga4.bounceRate * 100, 1)}%`,
+              delta: calcDelta(rawData.ga4.bounceRate, rawData.ga4.bounceRatePrev),
+              invertGood: true },
+            { label: 'Conversion Rate',
+              value: `${fmt(rawData.ga4.conversionRate * 100, 2)}%`,
               delta: calcDelta(rawData.ga4.conversionRate, rawData.ga4.conversionRatePrev) },
-            { label: 'Avg. Session',  value: fmtDur(rawData.ga4.avgSessionDuration),
+            { label: 'Avg. Session Duration',
+              value: fmtDur(rawData.ga4.avgSessionDuration),
               delta: calcDelta(rawData.ga4.avgSessionDuration, rawData.ga4.avgSessionDurationPrev) },
           ],
         }),
@@ -495,25 +768,35 @@ export async function generatePDF(report: any, agency: any, client: any): Promis
 
       /* ── Google Ads ── */
       rawData?.googleAds && React.createElement(View, {},
-        React.createElement(SectionHeading, { title: 'Google Ads', color }),
+        React.createElement(SectionHeading, { num: nextSec(), title: 'Google Ads  —  Paid Search Performance', color: brandColor }),
         React.createElement(KpiGrid, {
-          color, perRow: 4,
+          color: brandColor, errorColor: T.error, perRow: 4,
           metrics: [
-            { label: 'Spend',        value: `$${fmt(rawData.googleAds.spend, 0)}`,
-              delta: calcDelta(rawData.googleAds.spend, rawData.googleAds.spendPrev), invertGood: true },
-            { label: 'Impressions',  value: fmt(rawData.googleAds.impressions),
+            { label: 'Total Spend',
+              value: `$${fmt(rawData.googleAds.spend, 0)}`,
+              delta: calcDelta(rawData.googleAds.spend, rawData.googleAds.spendPrev),
+              invertGood: true },
+            { label: 'Impressions',
+              value: fmt(rawData.googleAds.impressions),
               delta: calcDelta(rawData.googleAds.impressions, rawData.googleAds.impressionsPrev) },
-            { label: 'Clicks',       value: fmt(rawData.googleAds.clicks),
+            { label: 'Clicks',
+              value: fmt(rawData.googleAds.clicks),
               delta: calcDelta(rawData.googleAds.clicks, rawData.googleAds.clicksPrev) },
-            { label: 'CTR',          value: `${fmt(rawData.googleAds.ctr * 100, 2)}%`,
+            { label: 'Click-Through Rate',
+              value: `${fmt(rawData.googleAds.ctr * 100, 2)}%`,
               delta: calcDelta(rawData.googleAds.ctr, rawData.googleAds.ctrPrev) },
-            { label: 'CPC',          value: `$${fmt(rawData.googleAds.cpc, 2)}`,
-              delta: calcDelta(rawData.googleAds.cpc, rawData.googleAds.cpcPrev), invertGood: true },
-            { label: 'ROAS',         value: `${fmt(rawData.googleAds.roas, 2)}x`,
+            { label: 'Cost per Click',
+              value: `$${fmt(rawData.googleAds.cpc, 2)}`,
+              delta: calcDelta(rawData.googleAds.cpc, rawData.googleAds.cpcPrev),
+              invertGood: true },
+            { label: 'ROAS',
+              value: `${fmt(rawData.googleAds.roas, 2)}x`,
               delta: calcDelta(rawData.googleAds.roas, rawData.googleAds.roasPrev) },
-            { label: 'Conversions',  value: fmt(rawData.googleAds.conversions),
+            { label: 'Conversions',
+              value: fmt(rawData.googleAds.conversions),
               delta: calcDelta(rawData.googleAds.conversions, rawData.googleAds.conversionsPrev) },
-            { label: 'Conv. Rate',   value: `${fmt((rawData.googleAds.conversionRate ?? 0) * 100, 2)}%`,
+            { label: 'Conversion Rate',
+              value: `${fmt((rawData.googleAds.conversionRate ?? 0) * 100, 2)}%`,
               delta: calcDelta(rawData.googleAds.conversionRate, rawData.googleAds.conversionRatePrev) },
           ],
         }),
@@ -521,72 +804,168 @@ export async function generatePDF(report: any, agency: any, client: any): Promis
 
       /* ── Meta Ads ── */
       rawData?.meta && React.createElement(View, {},
-        React.createElement(SectionHeading, { title: 'Meta Ads', color }),
+        React.createElement(SectionHeading, { num: nextSec(), title: 'Meta Ads  —  Social Advertising', color: brandColor }),
         React.createElement(KpiGrid, {
-          color, perRow: 4,
+          color: brandColor, errorColor: T.error, perRow: 4,
           metrics: [
-            { label: 'Spend',        value: `$${fmt(rawData.meta.spend, 0)}`,
-              delta: calcDelta(rawData.meta.spend, rawData.meta.spendPrev), invertGood: true },
-            { label: 'Impressions',  value: fmt(rawData.meta.impressions),
+            { label: 'Total Spend',
+              value: `$${fmt(rawData.meta.spend, 0)}`,
+              delta: calcDelta(rawData.meta.spend, rawData.meta.spendPrev),
+              invertGood: true },
+            { label: 'Impressions',
+              value: fmt(rawData.meta.impressions),
               delta: calcDelta(rawData.meta.impressions, rawData.meta.impressionsPrev) },
-            { label: 'Reach',        value: fmt(rawData.meta.reach),
+            { label: 'Reach',
+              value: fmt(rawData.meta.reach),
               delta: calcDelta(rawData.meta.reach, rawData.meta.reachPrev) },
-            { label: 'Clicks',       value: fmt(rawData.meta.clicks),
+            { label: 'Clicks',
+              value: fmt(rawData.meta.clicks),
               delta: calcDelta(rawData.meta.clicks, rawData.meta.clicksPrev) },
-            { label: 'CTR',          value: `${fmt(rawData.meta.ctr * 100, 3)}%`,
+            { label: 'Click-Through Rate',
+              value: `${fmt(rawData.meta.ctr * 100, 3)}%`,
               delta: calcDelta(rawData.meta.ctr, rawData.meta.ctrPrev) },
-            { label: 'CPM',          value: `$${fmt(rawData.meta.cpm, 2)}`,
-              delta: calcDelta(rawData.meta.cpm, rawData.meta.cpmPrev), invertGood: true },
-            { label: 'ROAS',         value: `${fmt(rawData.meta.roas, 2)}x`,
+            { label: 'Cost per Mille (CPM)',
+              value: `$${fmt(rawData.meta.cpm, 2)}`,
+              delta: calcDelta(rawData.meta.cpm, rawData.meta.cpmPrev),
+              invertGood: true },
+            { label: 'ROAS',
+              value: `${fmt(rawData.meta.roas, 2)}x`,
               delta: calcDelta(rawData.meta.roas, rawData.meta.roasPrev) },
-            { label: 'Frequency',    value: fmt(rawData.meta.frequency, 2),
-              delta: calcDelta(rawData.meta.frequency, rawData.meta.frequencyPrev), invertGood: true },
+            { label: 'Creative Frequency',
+              value: fmt(rawData.meta.frequency, 2) || '—',
+              delta: calcDelta(rawData.meta.frequency, rawData.meta.frequencyPrev),
+              invertGood: true },
+          ],
+        }),
+      ),
+
+      /* ── LinkedIn Ads ── */
+      rawData?.linkedin && React.createElement(View, {},
+        React.createElement(SectionHeading, { num: nextSec(), title: 'LinkedIn Ads  —  B2B Advertising', color: brandColor }),
+        React.createElement(KpiGrid, {
+          color: brandColor, errorColor: T.error, perRow: 4,
+          metrics: [
+            { label: 'Total Spend',
+              value: `$${fmt(rawData.linkedin.spend, 0)}`,
+              delta: calcDelta(rawData.linkedin.spend, rawData.linkedin.spendPrev),
+              invertGood: true },
+            { label: 'Impressions',
+              value: fmt(rawData.linkedin.impressions),
+              delta: calcDelta(rawData.linkedin.impressions, rawData.linkedin.impressionsPrev) },
+            { label: 'Clicks',
+              value: fmt(rawData.linkedin.clicks),
+              delta: calcDelta(rawData.linkedin.clicks, rawData.linkedin.clicksPrev) },
+            { label: 'Click-Through Rate',
+              value: `${fmt(rawData.linkedin.ctr * 100, 2)}%`,
+              delta: calcDelta(rawData.linkedin.ctr, rawData.linkedin.ctrPrev) },
+            { label: 'Cost per Click',
+              value: `$${fmt(rawData.linkedin.cpc, 2)}`,
+              delta: calcDelta(rawData.linkedin.cpc, rawData.linkedin.cpcPrev),
+              invertGood: true },
+            { label: 'CPM',
+              value: `$${fmt(rawData.linkedin.cpm, 2)}`,
+              delta: calcDelta(rawData.linkedin.cpm, rawData.linkedin.cpmPrev),
+              invertGood: true },
+            { label: 'Conversions',
+              value: fmt(rawData.linkedin.conversions),
+              delta: calcDelta(rawData.linkedin.conversions, rawData.linkedin.conversionsPrev) },
+            { label: 'Lead Gen Forms',
+              value: fmt(rawData.linkedin.leadGenFormCompletions),
+              delta: calcDelta(rawData.linkedin.leadGenFormCompletions, rawData.linkedin.leadGenFormCompletionsPrev) },
           ],
         }),
       ),
 
       /* ── AI Narrative ── */
       narrative && React.createElement(View, {},
-        React.createElement(SectionHeading, { title: 'AI Insight Analysis', color }),
+        React.createElement(SectionHeading, { num: nextSec(), title: 'AI Insight Analysis  —  Cross-Channel Intelligence', color: brandColor }),
 
+        // AI header card
         React.createElement(View, {
-          style: [S.aiHeaderRow, { borderColor: color + '28', backgroundColor: color + '08' }],
+          style: [S.narrHdr, {
+            borderColor: withOpacity(brandColor, 0.2),
+            backgroundColor: withOpacity(brandColor, 0.05),
+          }],
         },
-          React.createElement(View, { style: [S.aiBadge, { backgroundColor: color }] },
-            React.createElement(Text, { style: S.aiBadgeText }, 'AI'),
+          React.createElement(View, { style: [S.narrBadge, { backgroundColor: brandColor }] },
+            React.createElement(Text, { style: S.narrBadgeTxt }, 'AI'),
           ),
-          React.createElement(View, {},
-            React.createElement(Text, { style: S.aiTitle }, 'AI Insight Write — Cross-Channel Analysis'),
-            React.createElement(Text, { style: S.aiSub },
+          React.createElement(View, { style: { flex: 1 } },
+            React.createElement(Text, { style: S.narrHdrTitle },
+              'Cross-Channel Performance Narrative'),
+            React.createElement(Text, { style: S.narrHdrSub },
               `${tone} tone`
               + (narrative.wordCount ? `  ·  ${narrative.wordCount} words` : '')
-              + (report.aiModel      ? `  ·  ${report.aiModel}`            : ''),
+              + (report.aiModel ? `  ·  Model: ${report.aiModel}` : ''),
+            ),
+          ),
+          // Stars decoration
+          React.createElement(Svg, { width: 48, height: 36, viewBox: '0 0 48 36' },
+            ...[
+              [24, 18, 12],
+              [6, 8, 7],
+              [42, 6, 6],
+              [40, 26, 5],
+              [8, 28, 4],
+            ].map(([cx, cy, r], i) =>
+              React.createElement(Circle, {
+                key: i, cx, cy, r,
+                fill: brandColor,
+                fillOpacity: 0.15 + i * 0.04,
+              })
             ),
           ),
         ),
 
+        // Narrative sections 1-4
         ...[
-          { title: '📊 Executive Summary',    body: narrative.executiveSummary },
-          { title: '📈 Campaign Performance', body: narrative.campaignPerformance },
-          { title: '🏆 Key Wins',             body: narrative.keyWins },
-          { title: '⚠️ Areas of Concern',     body: narrative.areasOfConcern },
-          { title: '🎯 Recommendations',      body: narrative.recommendations },
-        ].filter(s => s.body).map(s =>
-          React.createElement(NarrBlock, { key: s.title, title: s.title, body: s.body, color })
+          { title: 'Executive Summary',    body: narrative.executiveSummary,    isRec: false },
+          { title: 'Campaign Performance', body: narrative.campaignPerformance, isRec: false },
+          { title: 'Key Wins',             body: narrative.keyWins,             isRec: false },
+          { title: 'Areas of Concern',     body: narrative.areasOfConcern,      isRec: false },
+        ].filter(s => s.body).map((s, i) =>
+          React.createElement(NarrBlock, {
+            key: s.title,
+            num: i + 1,
+            title: s.title,
+            body: s.body,
+            color: brandColor,
+            isRec: false,
+          })
         ),
 
+        // Recommendations in card style
+        narrative.recommendations && React.createElement(View, { style: { marginTop: 6 } },
+          React.createElement(Text, {
+            style: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#94A3B8',
+              textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 8 },
+          }, 'Strategic Recommendations'),
+          React.createElement(NarrBlock, {
+            num: 5,
+            title: 'Action Plan',
+            body: narrative.recommendations,
+            color: brandColor,
+            isRec: true,
+          }),
+        ),
+
+        // Watermark for non-Agency
         !isAgency && React.createElement(Text, { style: S.watermark },
           'Generated with ReportCraft AI  ·  reportcraft.ai',
         ),
       ),
     ),
 
-    runningFooter,
+    footer,
   );
 
-  const doc = React.createElement(
-    Document,
-    { title: `${clientName} — Performance Report — ${dateRange}`, author: agencyName },
+  const doc = React.createElement(Document,
+    {
+      title:  `${clientName} — Performance Report — ${dateRange}`,
+      author: agencyName,
+      creator: 'ReportCraft AI',
+      subject: 'Digital Marketing Performance Report',
+    },
     coverPage,
     contentPage,
   );
